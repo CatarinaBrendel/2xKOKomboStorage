@@ -1,8 +1,11 @@
 import React, { useEffect, useState } from 'react'
-import logoUrl from '../assets/logo.png'
+import logoUrl from '../assets/logo_nobg.png'
 
-export default function MenuSidePanel(){
+export default function MenuSidePanel({ selection: propSelection, onSelectionChange }){
   const [images, setImages] = useState([])
+  const [localSelection, setLocalSelection] = useState({ main: null, assist: null })
+  const selection = propSelection || localSelection
+  const setSelection = onSelectionChange || setLocalSelection
 
   useEffect(() => {
     let mounted = true
@@ -39,8 +42,30 @@ export default function MenuSidePanel(){
     return () => { mounted = false }
   }, [])
 
-  // Take up to 12 images to show (2 columns x 6 rows)
+  // Take images to show (2 columns x 6 rows)
   const thumbnails = images.slice(0, 12)
+
+  function getChampionName(filename) {
+    if (!filename) return ''
+    const base = filename.replace(/\.[^/.]+$/, '')
+    const matches = base.match(/[A-Za-zÀ-ÖØ-öø-ÿ]+/g)
+    if (!matches || matches.length === 0) return base
+    return matches[matches.length - 1]
+  }
+
+  function handleClick(filename) {
+    setSelection(prev => {
+      const isMain = prev && prev.main === filename
+      const isAssist = prev && prev.assist === filename
+      if (isMain) return { ...prev, main: null }
+      if (isAssist) return { ...prev, assist: null }
+
+      if (!prev || !prev.main) return { ...prev, main: filename }
+      if (!prev.assist) return { ...prev, assist: filename }
+      // both set -> replace assist
+      return { ...prev, assist: filename }
+    })
+  }
 
   return (
     <aside className="w-64 min-w-[220px] p-4 flex-shrink-0 h-screen flex flex-col" style={{borderRight:'1px solid var(--color-bg-border)'}}>
@@ -56,21 +81,48 @@ export default function MenuSidePanel(){
       <div className="flex-1 overflow-y-auto">
         <div className="grid grid-cols-2 grid-rows-6 gap-1 mb-4 w-max mx-auto justify-items-center">
         {thumbnails.length > 0 ? (
-        thumbnails.map((img, i) => (
-            <div key={img.path} className="w-20 h-20 rounded-md overflow-hidden border border-[rgba(255,255,255,0.04)] bg-[rgba(255,255,255,0.02)] flex items-center justify-center">
+        thumbnails.map((img, i) => {
+          const name = getChampionName(img.filename)
+          const isMain = selection.main === img.filename
+          const isAssist = selection.assist === img.filename
+          const borderStyle = isMain
+            ? { border: '2px solid var(--btn-color-light)' }
+            : isAssist
+            ? { border: '2px solid var(--btn-color-medium)' }
+            : { border: '1px solid rgba(255,255,255,0.04)' }
+
+          return (
+            <div
+              key={img.path}
+              onClick={() => handleClick(img.filename)}
+              className="w-20 h-20 rounded-md overflow-hidden bg-[rgba(255,255,255,0.02)] flex items-center justify-center relative cursor-pointer"
+              style={borderStyle}
+              title={name}
+            >
               <img
-                  src={img.url}
-                  alt={img.filename}
-                  title={img.filename}
-                  className="w-full h-full object-cover"
-                  onError={(e) => {
-                  // fallback to a small data-uri SVG placeholder if image fails to load
+                src={img.url}
+                alt={name}
+                className="w-full h-full object-cover"
+                onError={(e) => {
                   e.currentTarget.onerror = null
                   e.currentTarget.src = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256"><rect width="100%" height="100%" fill="%232C2C2E"/><text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" font-family="Arial" font-size="72" fill="%23F2F2F7">?</text></svg>'
-                  }}
+                }}
               />
+
+              {isMain && (
+                <div className="absolute top-1 left-1 px-1.5 py-0.5 text-[10px] font-semibold rounded" style={{ backgroundColor: 'var(--btn-color-light)', color: 'var(--color-bg-default)' }}>
+                  main
+                </div>
+              )}
+
+              {isAssist && (
+                <div className="absolute top-1 right-1 px-1.5 py-0.5 text-[10px] font-semibold rounded" style={{ backgroundColor: 'var(--btn-color-medium)', color: 'var(--color-text-alt)' }}>
+                  assist
+                </div>
+              )}
             </div>
-        ))
+          )
+        })
         ) : (
         Array.from({ length: 12 }).map((_, i) => (
           <div key={i} className="w-20 h-20 rounded-md overflow-hidden border border-[rgba(255,255,255,0.04)] flex items-center justify-center bg-[rgba(255,255,255,0.02)]">

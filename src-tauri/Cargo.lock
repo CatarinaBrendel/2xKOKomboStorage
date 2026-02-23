@@ -99,14 +99,17 @@ version = "0.1.0"
 dependencies = [
  "dirs-next",
  "flexi_logger",
+ "hex",
  "log",
  "open",
  "rusqlite",
  "serde",
  "serde_json",
+ "sha2",
  "tauri",
  "tauri-build",
  "tauri-plugin-log",
+ "uuid",
 ]
 
 [[package]]

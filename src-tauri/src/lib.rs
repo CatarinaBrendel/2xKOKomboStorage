@@ -40,7 +40,7 @@ pub fn run() {
 
       Ok(())
     })
-    .invoke_handler(tauri::generate_handler![db::init_db, db::run_migrations_cmd, db::get_logs_dir])
+    .invoke_handler(tauri::generate_handler![db::init_db, db::run_migrations_cmd, db::get_logs_dir, db::save_champion_image])
     .run(tauri::generate_context!())
     .expect("error while running tauri application");
 
