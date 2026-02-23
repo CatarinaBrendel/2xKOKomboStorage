@@ -43,42 +43,45 @@ export default function MenuSidePanel(){
   const thumbnails = images.slice(0, 12)
 
   return (
-    <aside className="w-64 min-w-[220px] p-4 flex-shrink-0 h-screen" style={{borderRight:'1px solid var(--color-bg-border)'}}>
-      <div className="mb-2 flex justify-center">
-        <img src={logoUrl} alt="logo" className="w-36 h-auto object-contain" />
+    <aside className="w-64 min-w-[220px] p-4 flex-shrink-0 h-screen flex flex-col" style={{borderRight:'1px solid var(--color-bg-border)'}}>
+      <div className="flex-shrink-0">
+        <div className="mb-2 flex justify-center">
+          <img src={logoUrl} alt="logo" className="w-36 h-auto object-contain" />
+        </div>
+        <div className="mb-4">
+          <h2 className="text-xl font-bold">Champions</h2>
+        </div>
       </div>
-      <div className="mb-4">
-        <h2 className="text-xl font-bold">Champions</h2>
-      </div>
-      <div className="grid grid-cols-2 grid-rows-6 gap-1 mb-4 w-max mx-auto justify-items-center">
+
+      <div className="flex-1 overflow-y-auto">
+        <div className="grid grid-cols-2 grid-rows-6 gap-1 mb-4 w-max mx-auto justify-items-center">
         {thumbnails.length > 0 ? (
-          thumbnails.map((img, i) => (
+        thumbnails.map((img, i) => (
             <div key={img.path} className="w-20 h-20 rounded-md overflow-hidden border border-[rgba(255,255,255,0.04)] bg-[rgba(255,255,255,0.02)] flex items-center justify-center">
               <img
-                src={img.url}
-                alt={img.filename}
-                title={img.filename}
-                className="w-full h-full object-cover"
-                onError={(e) => {
+                  src={img.url}
+                  alt={img.filename}
+                  title={img.filename}
+                  className="w-full h-full object-cover"
+                  onError={(e) => {
                   // fallback to a small data-uri SVG placeholder if image fails to load
                   e.currentTarget.onerror = null
                   e.currentTarget.src = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256"><rect width="100%" height="100%" fill="%232C2C2E"/><text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" font-family="Arial" font-size="72" fill="%23F2F2F7">?</text></svg>'
-                }}
+                  }}
               />
             </div>
-          ))
+        ))
         ) : (
-          // fallback placeholders (6)
-          Array.from({length:6}).map((_, i) => (
-            <div key={i} className="w-14 h-14 rounded-md overflow-hidden border border-[rgba(255,255,255,0.04)] flex items-center justify-center bg-[rgba(255,255,255,0.02)]">
-              <span className="text-sm">{String.fromCharCode(65 + i)}</span>
-            </div>
-          ))
+        Array.from({ length: 12 }).map((_, i) => (
+          <div key={i} className="w-20 h-20 rounded-md overflow-hidden border border-[rgba(255,255,255,0.04)] flex items-center justify-center bg-[rgba(255,255,255,0.02)]">
+            <span className="text-sm">{String.fromCharCode(65 + i)}</span>
+          </div>
+        ))
         )}
-      </div>
+        </div>
 
-      <div className="space-y-3">
-        <div className="flex items-center gap-2 cursor-pointer text-text-default">
+        <div className="space-y-3 p-2">
+          <div className="flex items-center gap-2 cursor-pointer text-text-default">
           <div className="w-2 h-2 rounded-full bg-[var(--color-accent-primary)]"></div>
           <span>All Combos</span>
         </div>
@@ -89,15 +92,15 @@ export default function MenuSidePanel(){
         </div>
 
         <div>
-          <h3 className="text-sm text-text-muted mb-2">Tags</h3>
-          <div className="flex flex-col gap-2">
-            <button className="px-3 py-1 rounded bg-[rgba(255,255,255,0.03)] text-sm">BnB</button>
-            <button className="px-3 py-1 rounded bg-[rgba(255,255,255,0.03)] text-sm">Corner</button>
-            <button className="px-3 py-1 rounded bg-[rgba(255,255,255,0.03)] text-sm text-text-muted">+ Add Tag</button>
-          </div>
+            <h3 className="text-sm text-text-muted mb-2">Tags</h3>
+            <div className="flex flex-col gap-2">
+                <button className="px-3 py-1 rounded bg-[rgba(255,255,255,0.03)] text-sm">BnB</button>
+                <button className="px-3 py-1 rounded bg-[rgba(255,255,255,0.03)] text-sm">Corner</button>
+                <button className="px-3 py-1 rounded bg-[rgba(255,255,255,0.03)] text-sm text-text-muted">+ Add Tag</button>
+            </div>
+        </div>
         </div>
       </div>
-      
     </aside>
   )
 }
