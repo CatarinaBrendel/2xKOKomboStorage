@@ -11,7 +11,7 @@ export default function ComboVisual({ line }){
     if (t === 'S2') return 'bg-rose-500'
     if (t.startsWith('S')) return 'bg-rose-500'
     if (t === 'H') return 'bg-purple-700'
-    if (t === 'T') return 'bg-lime-300 text-black'
+    if (t === 'T') return 'bg-lime-300 text-gray-900'
     if (t === 'L') return 'bg-purple-300 text-black'
     return 'bg-violet-500'
   }

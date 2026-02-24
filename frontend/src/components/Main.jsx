@@ -318,9 +318,29 @@ export default function Main({ selection, onEditChampion }){
                 <strong className="text-sm">Role:</strong> <span className="text-sm text-text-muted">{activeChampion && activeChampion.type ? activeChampion.type : '—'}</span>
               </div>
               {/* Strategy intentionally omitted from Overview; shown in Strategy tab */}
-              <div>
-                <strong className="text-sm">Notes:</strong>
-                <div className="text-sm text-text-muted mt-1">{activeChampion && activeChampion.metadata && activeChampion.metadata.notes ? activeChampion.metadata.notes : 'No notes.'}</div>
+              <div className="mt-4">
+                <div className="border-t border-[rgba(255,255,255,0.04)] pt-4">
+                  <div className="text-sm text-text-muted font-semibold mb-4">NOTES</div>
+
+                  {activeChampion && activeChampion.metadata && activeChampion.metadata.notes ? (
+                    (() => {
+                      const raw = String(activeChampion.metadata.notes || '')
+                      const lines = raw.split('\n').map(l => l.trim()).filter(Boolean)
+                      return (
+                        <ul className="space-y-4">
+                          {lines.map((ln, idx) => (
+                            <li key={idx} className="flex items-start gap-4">
+                              <span className="flex-shrink-0 mt-1 w-2 h-2 rounded-full bg-sky-400" />
+                              <div className="text-sm text-[rgba(255,255,255,0.75)] leading-relaxed">{ln}</div>
+                            </li>
+                          ))}
+                        </ul>
+                      )
+                    })()
+                  ) : (
+                    <div className="text-sm text-text-muted">No notes.</div>
+                  )}
+                </div>
               </div>
             </div>
           </div>
@@ -419,9 +439,25 @@ export default function Main({ selection, onEditChampion }){
       {activeTab === 'Strategy' && (
         <div className="card p-6">
           <h2 className="text-2xl font-semibold mb-2">Strategy</h2>
-          <div className="text-sm text-text-muted">
-            {activeChampion && activeChampion.strategy ? activeChampion.strategy : 'No strategy notes.'}
-          </div>
+          {(() => {
+            const raw = activeChampion && activeChampion.strategy ? String(activeChampion.strategy) : ''
+            const lines = raw.split('\n').map(l => l.trim()).filter(Boolean)
+            const intro = lines.length > 0 ? lines[0] : 'No strategy notes.'
+            const items = lines.length > 1 ? lines.slice(1) : []
+
+            return (
+              <>
+                <div className="text-base text-[rgba(255,255,255,0.75)] mb-4">{intro}</div>
+                {items.length > 0 ? (
+                  <ul className="list-disc pl-6 space-y-4">
+                    {items.map((it, idx) => (
+                      <li key={idx} className="text-sm text-[rgba(255,255,255,0.85)] leading-relaxed">{it}</li>
+                    ))}
+                  </ul>
+                ) : null}
+              </>
+            )
+          })()}
         </div>
       )}
 
