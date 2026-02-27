@@ -106,9 +106,44 @@ body {
 	list-style-type: lower-alpha;
 }
 
+.richtext-editor-content ul[data-type="taskList"] {
+	list-style: none;
+	padding-left: 0;
+	margin-left: 0;
+}
+
+.richtext-editor-content ul[data-type="taskList"] li {
+	display: flex;
+	align-items: flex-start;
+	gap: 0.45rem;
+}
+
+.richtext-editor-content ul[data-type="taskList"] li > label {
+	margin-top: 0.1rem;
+}
+
 .richtext-editor-content a {
 	color: var(--color-accent-secondary);
 	text-decoration: underline;
+}
+
+.richtext-editor-content blockquote {
+	margin: 0.65rem 0;
+	padding: 0.45rem 0.75rem;
+	border-left: 3px solid var(--color-accent-primary);
+	background: rgba(255, 255, 255, 0.03);
+	border-radius: 0.25rem;
+	color: rgba(255, 255, 255, 0.88);
+}
+
+.richtext-editor-content blockquote p {
+	margin: 0.2rem 0;
+}
+
+.richtext-editor-content hr {
+	border: 0;
+	border-top: 1px solid rgba(255, 255, 255, 0.16);
+	margin: 0.75rem 0;
 }
 
 .richtext-editor-content p.is-editor-empty:first-child::before {

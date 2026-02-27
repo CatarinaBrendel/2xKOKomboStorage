@@ -210,6 +210,39 @@ export default function Main({ selection, onEditChampion }){
   }, [selection && selection.main])
 
   const tabs = ['Overview', 'Combos', 'Abilities', 'Strategy', 'Teams', 'Matchups']
+  const scrollableCardClass = 'card p-6 max-h-[calc(100vh-180px)] overflow-y-auto'
+
+  function renderRichSection(rawValue, emptyMessage) {
+    const raw = rawValue ? String(rawValue || '') : ''
+
+    let htmlToRender = null
+    if (raw.includes('<')) {
+      htmlToRender = DOMPurify.sanitize(raw)
+    } else if (raw.includes('&lt;')) {
+      const decoded = (typeof window !== 'undefined') ? new DOMParser().parseFromString(raw, 'text/html').documentElement.textContent : raw
+      htmlToRender = DOMPurify.sanitize(decoded)
+    }
+
+    if (htmlToRender) {
+      return (
+        <div className="richtext-editor-content max-w-none" dangerouslySetInnerHTML={{ __html: htmlToRender }} />
+      )
+    }
+
+    const lines = raw.split('\n').map(l => l.trim()).filter(Boolean)
+    if (lines.length === 0) {
+      return <div className="text-base text-[rgba(255,255,255,0.75)]">{emptyMessage}</div>
+    }
+
+    return (
+      <div className="richtext-editor-content max-w-none">
+        {lines.map((line, idx) => (
+          <p key={idx}>{line}</p>
+        ))}
+      </div>
+    )
+  }
+
   if (!selection || !selection.main) {
     return (
       <main className="flex-1 p-6 overflow-auto">
@@ -271,7 +304,7 @@ export default function Main({ selection, onEditChampion }){
 
       {/* Tab content */}
       {activeTab === 'Overview' && (
-        <div className="card p-6">
+        <div className={scrollableCardClass}>
           <div className="flex items-start gap-6">
             <div>
               <div className="w-28 h-28 rounded-md bg-[rgba(255,255,255,0.02)] overflow-hidden flex items-center justify-center">
@@ -294,39 +327,7 @@ export default function Main({ selection, onEditChampion }){
                   <div className="text-sm text-text-muted font-semibold mb-4">NOTES</div>
 
                   {activeChampion && activeChampion.metadata && activeChampion.metadata.notes ? (
-                    (() => {
-                      const raw = String(activeChampion.metadata.notes || '')
-
-                      // If the stored notes already contain HTML tags, sanitize and render them.
-                      // If they are plain text (no tags) keep the previous line-splitting list behavior.
-                      // Also handle the case where HTML was double-encoded (contains &lt; or &amp;lt;).
-                      let htmlToRender = null
-                      if (raw.includes('<')) {
-                        htmlToRender = DOMPurify.sanitize(raw)
-                      } else if (raw.includes('&lt;')) {
-                        // decode HTML entities, then sanitize
-                        const decoded = (typeof window !== 'undefined') ? new DOMParser().parseFromString(raw, 'text/html').documentElement.textContent : raw
-                        htmlToRender = DOMPurify.sanitize(decoded)
-                      }
-
-                      if (htmlToRender) {
-                        return (
-                          <div className="prose prose-invert text-sm text-[rgba(255,255,255,0.9)] leading-relaxed max-w-none" dangerouslySetInnerHTML={{ __html: htmlToRender }} />
-                        )
-                      }
-
-                      const lines = raw.split('\n').map(l => l.trim()).filter(Boolean)
-                      return (
-                        <ul className="space-y-4">
-                          {lines.map((ln, idx) => (
-                            <li key={idx} className="flex items-start gap-4">
-                              <span className="flex-shrink-0 mt-1 w-2 h-2 rounded-full bg-sky-400" />
-                              <div className="text-sm text-[rgba(255,255,255,0.75)] leading-relaxed">{ln}</div>
-                            </li>
-                          ))}
-                        </ul>
-                      )
-                    })()
+                    renderRichSection(activeChampion.metadata.notes, 'No notes.')
                   ) : (
                     <div className="text-sm text-text-muted">No notes.</div>
                   )}
@@ -339,7 +340,7 @@ export default function Main({ selection, onEditChampion }){
 
       {activeTab === 'Combos' && (
         selection && selection.main ? (
-          <div className="card p-6">
+          <div className={scrollableCardClass}>
             <h2 className="text-2xl font-semibold mb-2">Combos for {activeChampion ? activeChampion.name : getChampionName(selection.main)}</h2>
             {selection.assist ? (
               <p className="text-sm text-text-muted mb-4">Filtering combos that include assist {getChampionName(selection.assist)}</p>
@@ -437,48 +438,30 @@ export default function Main({ selection, onEditChampion }){
       )}
 
       {activeTab === 'Abilities' && (
-        <div className="card p-6">
+        <div className={scrollableCardClass}>
           <h2 className="text-2xl font-semibold mb-2">Abilities</h2>
-          <p className="text-text-muted">Abilities and descriptions will be shown here.</p>
+          {renderRichSection(activeChampion && activeChampion.metadata ? activeChampion.metadata.abilities : '', 'No ability notes.')}
         </div>
       )}
 
       {activeTab === 'Strategy' && (
-        <div className="card p-6">
+        <div className={scrollableCardClass}>
           <h2 className="text-2xl font-semibold mb-2">Strategy</h2>
-          {(() => {
-            const raw = activeChampion && activeChampion.strategy ? String(activeChampion.strategy) : ''
-            const lines = raw.split('\n').map(l => l.trim()).filter(Boolean)
-            const intro = lines.length > 0 ? lines[0] : 'No strategy notes.'
-            const items = lines.length > 1 ? lines.slice(1) : []
-
-            return (
-              <>
-                <div className="text-base text-[rgba(255,255,255,0.75)] mb-4">{intro}</div>
-                {items.length > 0 ? (
-                  <ul className="list-disc pl-6 space-y-4">
-                    {items.map((it, idx) => (
-                      <li key={idx} className="text-sm text-[rgba(255,255,255,0.85)] leading-relaxed">{it}</li>
-                    ))}
-                  </ul>
-                ) : null}
-              </>
-            )
-          })()}
+          {renderRichSection(activeChampion ? activeChampion.strategy : '', 'No strategy notes.')}
         </div>
       )}
 
       {activeTab === 'Teams' && (
-        <div className="card p-6">
+        <div className={scrollableCardClass}>
           <h2 className="text-2xl font-semibold mb-2">Teams</h2>
-          <p className="text-text-muted">Team building tools and presets.</p>
+          {renderRichSection(activeChampion && activeChampion.metadata ? activeChampion.metadata.teams : '', 'No team notes.')}
         </div>
       )}
 
       {activeTab === 'Matchups' && (
-        <div className="card p-6">
+        <div className={scrollableCardClass}>
           <h2 className="text-2xl font-semibold mb-2">Matchups</h2>
-          <p className="text-text-muted">Matchup data and counters.</p>
+          {renderRichSection(activeChampion && activeChampion.metadata ? activeChampion.metadata.matchups : '', 'No matchup notes.')}
         </div>
       )}
     </main>
