@@ -3,6 +3,7 @@ mod migrations;
 mod images;
 mod combos;
 mod champions;
+mod notes;
 
 pub fn run_migrations() -> Result<usize, Box<dyn std::error::Error>> {
   migrations::run_migrations()
@@ -41,6 +42,36 @@ pub fn save_champion_image(
 #[tauri::command]
 pub fn set_combos(champion_id: String, combos_json: String) -> Result<String, String> {
   combos::set_combos(champion_id, combos_json)
+}
+
+#[tauri::command]
+pub fn set_champion_notes(champion_id: String, notes_json: String) -> Result<String, String> {
+  notes::set_champion_notes(champion_id, notes_json)
+}
+
+#[tauri::command]
+pub fn list_tags() -> Result<serde_json::Value, String> {
+  notes::list_tags()
+}
+
+#[tauri::command]
+pub fn create_or_get_tag(name: String) -> Result<serde_json::Value, String> {
+  notes::create_or_get_tag(name)
+}
+
+#[tauri::command]
+pub fn rename_champion_note(note_id: String, title: String) -> Result<String, String> {
+  notes::rename_champion_note(note_id, title)
+}
+
+#[tauri::command]
+pub fn duplicate_champion_note(note_id: String) -> Result<serde_json::Value, String> {
+  notes::duplicate_champion_note(note_id)
+}
+
+#[tauri::command]
+pub fn delete_champion_note(note_id: String) -> Result<String, String> {
+  notes::delete_champion_note(note_id)
 }
 
 #[tauri::command]

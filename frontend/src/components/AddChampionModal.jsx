@@ -254,6 +254,7 @@ function Wizard({ steps = [], data = {}, onChange = () => {}, onFinish = () => {
             <RichTextEditor value={local.matchups||''} onChange={(val) => update({ matchups: val })} placeholder="Matchups" minHeight={180} />
           </div>
         )}
+
       </div>
 
       <div className="mt-3 flex items-center justify-between">

@@ -238,6 +238,7 @@ export default function MenuSidePanel({ selection: propSelection, onSelectionCha
           errors.push('combos save failed')
         }
       }
+
       } catch (e) {
       console.error('wizard finish error', e)
       errors.push('unexpected error')

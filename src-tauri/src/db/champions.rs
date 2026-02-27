@@ -5,6 +5,7 @@ use serde_json::json;
 use serde_json::Value as JsonValue;
 
 use super::common::default_db_path;
+use super::notes::{ensure_champion_notes_table, fetch_champion_notes};
 
 pub fn add_champion(
   name: String,
@@ -162,6 +163,8 @@ pub fn get_champion_by_code(code: String) -> Result<JsonValue, String> {
     let images = fetch_champion_images(&conn, id.to_string())?;
     ensure_champion_combos_table(&conn)?;
     let combos = fetch_champion_combos(&conn, id.to_string())?;
+    ensure_champion_notes_table(&conn)?;
+    let notes = fetch_champion_notes(&conn, id.to_string())?;
 
     let meta_json: Option<JsonValue> = match metadata {
       Some(m) => serde_json::from_str(&m).ok(),
@@ -178,6 +181,7 @@ pub fn get_champion_by_code(code: String) -> Result<JsonValue, String> {
       "metadata": meta_json,
       "images": images,
       "combos": combos,
+      "notes": notes,
     }))
   } else {
     Err(format!("champion not found: {}", code))
@@ -227,6 +231,8 @@ pub fn update_champion(
     let images = fetch_champion_images(&conn, id.to_string())?;
     ensure_champion_combos_table(&conn)?;
     let combos = fetch_champion_combos(&conn, id.to_string())?;
+    ensure_champion_notes_table(&conn)?;
+    let notes = fetch_champion_notes(&conn, id.to_string())?;
 
     let meta_json: Option<JsonValue> = match metadata {
       Some(m) => serde_json::from_str(&m).ok(),
@@ -243,6 +249,7 @@ pub fn update_champion(
       "metadata": meta_json,
       "images": images,
       "combos": combos,
+      "notes": notes,
     }))
   } else {
     Err(format!("champion not found after update: {}", id))
@@ -271,6 +278,7 @@ pub fn delete_champion(id: String) -> Result<String, String> {
   let champion_id = id_num.to_string();
 
   let has_champion_combos = table_exists(&conn, "champion_combos")?;
+  let has_champion_notes = table_exists(&conn, "champion_notes")?;
   let has_champion_images = table_exists(&conn, "champion_images")?;
   let has_combo_champions = table_exists(&conn, "combo_champions")?;
   let has_combo_steps = table_exists(&conn, "combo_steps")?;
@@ -306,6 +314,14 @@ pub fn delete_champion(id: String) -> Result<String, String> {
       rusqlite::params![champion_id.clone()],
     )
     .map_err(|e| format!("db delete champion_combos error: {}", e))?;
+  }
+
+  if has_champion_notes {
+    tx.execute(
+      "DELETE FROM champion_notes WHERE champion_id = ?1",
+      rusqlite::params![id_num],
+    )
+    .map_err(|e| format!("db delete champion_notes error: {}", e))?;
   }
 
   if has_champion_images {

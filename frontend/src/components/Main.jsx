@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react'
 import DOMPurify from 'dompurify'
 import getTauriModule from '../utils/tauri'
 import ComboVisual from './ComboVisual'
+import NotesWorkspace from './NotesWorkspace'
 
 function getChampionName(filename) {
   if (!filename) return ''
@@ -192,7 +193,7 @@ export default function Main({ selection, onEditChampion }){
     return () => { mounted = false }
   }, [selection && selection.main])
 
-  const tabs = ['Overview', 'Combos', 'Abilities', 'Strategy', 'Teams', 'Matchups']
+  const tabs = ['Overview', 'Combos', 'Abilities', 'Strategy', 'Teams', 'Matchups', 'Notes']
   const scrollableCardClass = 'card p-6 max-h-[calc(100vh-180px)] overflow-y-auto'
 
   function renderRichSection(rawValue, emptyMessage) {
@@ -229,8 +230,6 @@ export default function Main({ selection, onEditChampion }){
   if (!selection || !selection.main) {
     return (
       <main className="flex-1 p-6 overflow-auto">
-        
-
         <div className="h-[60vh] flex items-center justify-center card">
           <div className="text-center p-8">
             <div className="mb-6">
@@ -446,6 +445,14 @@ export default function Main({ selection, onEditChampion }){
           <h2 className="text-2xl font-semibold mb-2">Matchups</h2>
           {renderRichSection(activeChampion && activeChampion.metadata ? activeChampion.metadata.matchups : '', 'No matchup notes.')}
         </div>
+      )}
+
+      {activeTab === 'Notes' && (
+        <NotesWorkspace
+          activeChampion={activeChampion}
+          championCode={selection && selection.main ? selection.main : ''}
+          onChampionUpdated={setActiveChampion}
+        />
       )}
     </main>
   )
