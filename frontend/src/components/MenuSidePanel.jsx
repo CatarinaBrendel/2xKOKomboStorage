@@ -262,6 +262,81 @@ export default function MenuSidePanel({ selection: propSelection, onSelectionCha
     setTimeout(() => setToast(null), 3500)
   }
 
+  async function handleWizardDelete(championData) {
+    const previousChampionsList = championsList
+    const previousChampionImages = championImages
+    const errors = []
+
+    const championId = championData && championData.id ? String(championData.id) : ''
+    const championCode = championData && (championData.key || championData.code) ? String(championData.key || championData.code) : ''
+
+    // immediate visual feedback: close modal and update current sidepanel list
+    setShowAddModalState(false)
+    setNewChampionState({ name: '', key: '', role: '', notes: '' })
+
+    if (championId) {
+      setChampionsList(prev => prev.filter(c => String(c.id) !== championId))
+      setChampionImages(prev => {
+        const next = { ...prev }
+        delete next[championId]
+        return next
+      })
+    }
+
+    setSelection(prev => {
+      if (!prev) return prev
+      const next = { ...prev }
+      if (championCode && next.main === championCode) next.main = null
+      if (championCode && next.assist === championCode) next.assist = null
+      return next
+    })
+
+    try {
+      const tauri = await getTauriModule()
+      if (!tauri) {
+        errors.push('Tauri API unavailable — cannot delete champion in this environment')
+      } else {
+        if (!championId) {
+          if (championCode) {
+            await tauri.invoke('delete_champion_by_code', { code: championCode })
+          } else {
+            errors.push('missing champion id/code')
+          }
+        } else {
+          try {
+            await tauri.invoke('delete_champion', { id: championId })
+          } catch (primaryErr) {
+            if (championCode) {
+              await tauri.invoke('delete_champion_by_code', { code: championCode })
+            } else {
+              throw primaryErr
+            }
+          }
+        }
+      }
+    } catch (e) {
+      console.error('delete_champion failed', e)
+      const message = e && e.message ? String(e.message) : String(e)
+      errors.push(`delete failed: ${message}`)
+    }
+
+    if (errors.length) {
+      // rollback optimistic UI update if deletion failed
+      setChampionsList(previousChampionsList)
+      setChampionImages(previousChampionImages)
+      setToast({ type: 'error', text: errors.join(' · ') })
+    } else {
+      setToast({ type: 'success', text: 'Champion deleted' })
+      try {
+        window.dispatchEvent(new Event('champions:changed'))
+      } catch (e) {
+        console.debug('failed to dispatch champions:changed', e)
+      }
+    }
+
+    setTimeout(() => setToast(null), 3500)
+  }
+
   // Load champions from DB when running inside Tauri
   useEffect(() => {
     let mounted = true
@@ -439,6 +514,7 @@ export default function MenuSidePanel({ selection: propSelection, onSelectionCha
         championsList={championsList}
         championImages={championImages}
         onFinish={handleWizardFinish}
+        onDelete={handleWizardDelete}
       />
       {/* Toast */}
       {toast && (

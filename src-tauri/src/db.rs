@@ -692,6 +692,190 @@ pub fn update_champion(
   }
 }
 
+/// Delete a champion and related records (images + combos). Also removes unreferenced local image files.
+#[tauri::command]
+pub fn delete_champion(id: String) -> Result<String, String> {
+  let db_path = default_db_path().map_err(|e| format!("db path error: {}", e))?;
+  let mut conn = Connection::open(&db_path).map_err(|e| format!("db open error: {}", e))?;
+
+  let id_num: i64 = id.parse().map_err(|e| format!("invalid id: {}", e))?;
+
+  fn table_exists(conn: &Connection, name: &str) -> Result<bool, String> {
+    conn.query_row(
+      "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name = ?1)",
+      rusqlite::params![name],
+      |r| r.get::<_, i64>(0),
+    )
+    .map(|v| v == 1)
+    .map_err(|e| format!("table existence check error ({}): {}", name, e))
+  }
+
+  // ensure namespaced combos table exists for older installs
+  conn.execute_batch(
+    "CREATE TABLE IF NOT EXISTS champion_combos (
+       id TEXT PRIMARY KEY,
+       champion_id TEXT NOT NULL,
+       line TEXT NOT NULL,
+       fuse TEXT,
+       sort_order INTEGER DEFAULT 0,
+       name TEXT DEFAULT NULL,
+       ranking INTEGER DEFAULT NULL,
+       assist TEXT DEFAULT NULL,
+       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+     );
+     CREATE INDEX IF NOT EXISTS idx_champion_combos_champion_id ON champion_combos(champion_id);
+    "
+  ).map_err(|e| format!("failed to ensure champion_combos table: {}", e))?;
+
+  let champion_id = id_num.to_string();
+
+  let has_champion_combos = table_exists(&conn, "champion_combos")?;
+  let has_champion_images = table_exists(&conn, "champion_images")?;
+  let has_combo_champions = table_exists(&conn, "combo_champions")?;
+  let has_combo_steps = table_exists(&conn, "combo_steps")?;
+  let has_abilities = table_exists(&conn, "abilities")?;
+  let has_matchups = table_exists(&conn, "matchups")?;
+  let has_fuse_champions = table_exists(&conn, "fuse_champions")?;
+  let has_team_members = table_exists(&conn, "team_members")?;
+
+  let mut image_paths: Vec<String> = Vec::new();
+  if has_champion_images {
+    let mut stmt = conn
+      .prepare("SELECT path FROM champion_images WHERE champion_id = ?1")
+      .map_err(|e| format!("db prepare error: {}", e))?;
+
+    let rows = stmt
+      .query_map(rusqlite::params![champion_id.clone()], |r| r.get::<_, String>(0))
+      .map_err(|e| format!("db query error: {}", e))?;
+
+    for row in rows {
+      if let Ok(path) = row {
+        image_paths.push(path);
+      }
+    }
+  }
+
+  let tx = conn.transaction().map_err(|e| format!("db transaction error: {}", e))?;
+
+  if has_champion_combos {
+    tx.execute(
+      "DELETE FROM champion_combos WHERE champion_id = ?1",
+      rusqlite::params![champion_id.clone()],
+    )
+    .map_err(|e| format!("db delete champion_combos error: {}", e))?;
+  }
+
+  if has_champion_images {
+    tx.execute(
+      "DELETE FROM champion_images WHERE champion_id = ?1",
+      rusqlite::params![champion_id.clone()],
+    )
+    .map_err(|e| format!("db delete champion_images error: {}", e))?;
+  }
+
+  if has_combo_champions {
+    tx.execute(
+      "DELETE FROM combo_champions WHERE champion_id = ?1",
+      rusqlite::params![id_num],
+    )
+    .map_err(|e| format!("db delete combo_champions error: {}", e))?;
+  }
+
+  if has_combo_steps {
+    tx.execute(
+      "DELETE FROM combo_steps WHERE referenced_champion_id = ?1",
+      rusqlite::params![id_num],
+    )
+    .map_err(|e| format!("db delete combo_steps error: {}", e))?;
+  }
+
+  if has_abilities {
+    tx.execute(
+      "DELETE FROM abilities WHERE champion_id = ?1",
+      rusqlite::params![id_num],
+    )
+    .map_err(|e| format!("db delete abilities error: {}", e))?;
+  }
+
+  if has_matchups {
+    tx.execute(
+      "DELETE FROM matchups WHERE champion_id = ?1 OR versus_champion_id = ?1",
+      rusqlite::params![id_num],
+    )
+    .map_err(|e| format!("db delete matchups error: {}", e))?;
+  }
+
+  if has_fuse_champions {
+    tx.execute(
+      "DELETE FROM fuse_champions WHERE champion_id = ?1",
+      rusqlite::params![id_num],
+    )
+    .map_err(|e| format!("db delete fuse_champions error: {}", e))?;
+  }
+
+  if has_team_members {
+    tx.execute(
+      "DELETE FROM team_members WHERE champion_id = ?1",
+      rusqlite::params![id_num],
+    )
+    .map_err(|e| format!("db delete team_members error: {}", e))?;
+  }
+
+  let affected = tx
+    .execute("DELETE FROM champions WHERE id = ?1", rusqlite::params![id_num])
+    .map_err(|e| format!("db delete champion error: {}", e))?;
+
+  if affected == 0 {
+    return Err(format!("champion not found: {}", id));
+  }
+
+  tx.commit().map_err(|e| format!("db commit error: {}", e))?;
+
+  // cleanup image files if no other DB row references the path
+  if has_champion_images {
+    let base = dirs_next::data_dir().ok_or("unable to locate user data dir")?;
+    let images_dir = base.join("2xKOKombo").join("images");
+    for path in image_paths {
+      let refs: i64 = conn
+        .query_row(
+          "SELECT COUNT(1) FROM champion_images WHERE path = ?1",
+          rusqlite::params![path.clone()],
+          |r| r.get(0),
+        )
+        .map_err(|e| format!("db image refs query error: {}", e))?;
+
+      if refs == 0 {
+        let _ = fs::remove_file(images_dir.join(path));
+      }
+    }
+  }
+
+  Ok("ok".to_string())
+}
+
+/// Delete a champion by unique code. Useful as a fallback when the UI has stale/missing id data.
+#[tauri::command]
+pub fn delete_champion_by_code(code: String) -> Result<String, String> {
+  let db_path = default_db_path().map_err(|e| format!("db path error: {}", e))?;
+  let conn = Connection::open(&db_path).map_err(|e| format!("db open error: {}", e))?;
+
+  let id_num: Option<i64> = conn
+    .query_row(
+      "SELECT id FROM champions WHERE code = ?1 LIMIT 1",
+      rusqlite::params![code.clone()],
+      |r| r.get(0),
+    )
+    .optional()
+    .map_err(|e| format!("db query error: {}", e))?;
+
+  if let Some(found_id) = id_num {
+    delete_champion(found_id.to_string())
+  } else {
+    Err(format!("champion not found by code: {}", code))
+  }
+}
+
 /// List all champions with a lightweight payload (includes optional icon image metadata).
 #[tauri::command]
 pub fn list_champions() -> Result<JsonValue, String> {

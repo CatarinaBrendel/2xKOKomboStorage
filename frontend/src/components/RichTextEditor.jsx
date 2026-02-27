@@ -28,8 +28,8 @@ export default function RichTextEditor({
 	value = '',
 	onChange = () => {},
 	placeholder = 'Write something…',
-	minHeight = 400,
-	maxHeight = 400
+	minHeight = 360,
+	maxHeight = 360
 }) {
 	const resolvedMaxHeight = maxHeight ?? minHeight
 	const [toolbarState, setToolbarState] = useState({

@@ -2,8 +2,10 @@ import React, { useEffect, useRef, useState } from 'react'
 import RichTextEditor from './RichTextEditor'
 import { Trash2 } from 'lucide-react'
 
-function Wizard({ steps = [], data = {}, onChange = () => {}, onFinish = () => {}, onCancel = () => {}, currentImageUrl = null, championsList = [] }){
+function Wizard({ steps = [], data = {}, onChange = () => {}, onFinish = () => {}, onDelete = () => {}, onCancel = () => {}, currentImageUrl = null, championsList = [] }){
   const [stepIndex, setStepIndex] = useState(0)
+  const [isDeleting, setIsDeleting] = useState(false)
+  const [showDeleteConfirmModal, setShowDeleteConfirmModal] = useState(false)
   const [local, setLocal] = useState({
     name: '',
     key: '',
@@ -51,12 +53,34 @@ function Wizard({ steps = [], data = {}, onChange = () => {}, onFinish = () => {
     try { console.debug('Wizard.update', updates) } catch (e) {}
   }
 
+  async function handleDelete() {
+    if (!local || !local.id) return
+
+    setShowDeleteConfirmModal(true)
+  }
+
+  async function confirmDeleteChampion() {
+    if (!local || !local.id) return
+
+    setIsDeleting(true)
+    try {
+      await onDelete(local)
+    } catch (e) {
+      console.error('modal delete failed', e)
+    } finally {
+      setIsDeleting(false)
+      setShowDeleteConfirmModal(false)
+    }
+  }
+
   return (
     <div className="flex-1 flex flex-col">
-      <div className="mb-3 flex items-center gap-2">
+      <div className="mb-3">
+        <div className="flex items-center justify-center gap-2">
         {steps.map((s, i) => (
           <div key={s} className={`px-2 py-1 rounded text-sm ${i === stepIndex ? 'bg-[var(--color-accent-primary)] text-white' : 'bg-[rgba(255,255,255,0.02)] text-text-muted'}`}>{s}</div>
         ))}
+        </div>
       </div>
 
       <div className="flex-1 min-h-0 overflow-auto p-2">
@@ -141,8 +165,8 @@ function Wizard({ steps = [], data = {}, onChange = () => {}, onFinish = () => {
                               <textarea rows={3} className="w-full p-2 rounded bg-[transparent] border border-[rgba(255,255,255,0.04)] text-sm" value={cmb.line||''} onChange={(e) => { const copy = asArray.slice(); copy[idx] = { ...copy[idx], line: e.target.value }; setCombos(copy) }} placeholder="Combo string" />
 
                               <div className="mt-2 w-full">
-                                <div className="flex items-center gap-2">
-                                  <div className="flex items-center flex-wrap gap-2 p-1 rounded border border-[rgba(255,255,255,0.04)] flex-1">
+                                <div className="flex items-center gap-4 w-full">
+                                  <div className="flex items-center flex-wrap gap-2 p-1 rounded border border-[rgba(255,255,255,0.04)] flex-1 min-w-0">
                                     {tags.map((t, ti) => (
                                       <div key={ti} className="flex items-center gap-2 bg-[rgba(255,255,255,0.03)] rounded px-2 py-0.5 text-sm">
                                         <div className="text-text-muted">{t}</div>
@@ -170,10 +194,6 @@ function Wizard({ steps = [], data = {}, onChange = () => {}, onFinish = () => {
                                       }}
                                     />
                                   </div>
-
-                                  <button type="button" title="Delete combo" aria-label="Delete combo" onClick={() => { const copy = asArray.slice(); copy.splice(idx,1); setCombos(copy) }} className="p-2 rounded hover:bg-[rgba(255,0,0,0.08)] text-rose-400">
-                                    <Trash2 size={16} />
-                                  </button>
                                 </div>
                               </div>
                             </div>
@@ -191,6 +211,10 @@ function Wizard({ steps = [], data = {}, onChange = () => {}, onFinish = () => {
                                   <option key={c.id} value={c.id}>{c.name}</option>
                                 ))}
                               </select>
+
+                              <button type="button" title="Delete combo" aria-label="Delete combo" onClick={() => { const copy = asArray.slice(); copy.splice(idx,1); setCombos(copy) }} className="p-2 rounded hover:bg-[rgba(255,0,0,0.08)] text-rose-400 ml-auto mt-10">
+                                <Trash2 size={20} />
+                              </button>
                             </div>
                           </div>
                         )
@@ -238,6 +262,16 @@ function Wizard({ steps = [], data = {}, onChange = () => {}, onFinish = () => {
           <button type="button" onClick={() => { setStepIndex(Math.min(steps.length-1, stepIndex+1)) }} className="px-3 py-1 rounded bg-[rgba(255,255,255,0.03)]">Next</button>
         </div>
         <div className="flex items-center gap-2">
+          {local && local.id ? (
+            <button
+              type="button"
+              onClick={handleDelete}
+              disabled={isDeleting}
+              className="px-3 py-1 rounded text-white disabled:opacity-60 bg-[var(--color-accent-danger)]"
+            >
+              {isDeleting ? 'Deleting…' : 'Delete'}
+            </button>
+          ) : null}
           <button type="button" onClick={onCancel} className="px-3 py-1 rounded bg-[rgba(255,255,255,0.03)]">Cancel</button>
           {stepIndex === steps.length-1 ? (
             <button type="button" onClick={() => onFinish(local)} className="px-3 py-1 rounded bg-[var(--color-accent-primary)] text-white">Finish</button>
@@ -246,11 +280,42 @@ function Wizard({ steps = [], data = {}, onChange = () => {}, onFinish = () => {
           )}
         </div>
       </div>
+
+      {showDeleteConfirmModal && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/60" onClick={() => { if (!isDeleting) setShowDeleteConfirmModal(false) }} />
+          <div className="relative z-10 w-[520px] max-w-[92vw] rounded border border-[var(--color-bg-border)] bg-[var(--color-bg-panel)] p-5">
+            <h4 className="text-base font-semibold mb-3 text-rose-300">Confirm Delete</h4>
+            <p className="text-sm text-text-muted leading-relaxed">
+              Deleting {local && local.name ? local.name : 'this champion'} action can't be undone. Are you sure you want to continue?
+            </p>
+
+            <div className="mt-5 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setShowDeleteConfirmModal(false)}
+                disabled={isDeleting}
+                className="px-3 py-1 rounded bg-[rgba(255,255,255,0.03)] disabled:opacity-60"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={confirmDeleteChampion}
+                disabled={isDeleting}
+                className="px-3 py-1 rounded bg-[var(--color-accent-danger)] text-white disabled:opacity-60"
+              >
+                {isDeleting ? 'Deleting…' : 'Delete Champion'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
 
-export default function AddChampionModal({ show, onClose, newChampion, setNewChampion, championsList = [], championImages = {}, onFinish }){
+export default function AddChampionModal({ show, onClose, newChampion, setNewChampion, championsList = [], championImages = {}, onFinish, onDelete }){
   if (!show) return null
   // try to resolve champion id from provided championsList using key/name so we can show thumbnail
   let resolvedImageUrl = null
@@ -282,6 +347,7 @@ export default function AddChampionModal({ show, onClose, newChampion, setNewCha
           currentImageUrl={ resolvedImageUrl }
           championsList={championsList}
           onFinish={onFinish}
+          onDelete={onDelete}
           onCancel={onClose}
         />
       </div>
