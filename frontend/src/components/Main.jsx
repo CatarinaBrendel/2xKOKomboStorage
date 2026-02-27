@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react'
+import DOMPurify from 'dompurify'
 import getTauriModule from '../utils/tauri'
 import ComboVisual from './ComboVisual'
 
@@ -212,22 +213,7 @@ export default function Main({ selection, onEditChampion }){
   if (!selection || !selection.main) {
     return (
       <main className="flex-1 p-6 overflow-auto">
-        <div className="mb-4 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <FilterPill active>Combo</FilterPill>
-            <FilterPill>Blockstring</FilterPill>
-            <FilterPill>Setup</FilterPill>
-            <FilterPill>Beginner</FilterPill>
-            <FilterPill>Advanced</FilterPill>
-          </div>
-          <div className="flex items-center gap-3 text-text-muted">
-            <span>Sort by:</span>
-            <select className="bg-[transparent] border border-[rgba(255,255,255,0.04)] rounded p-1 text-sm">
-              <option>Most Recent</option>
-              <option>Alphabetical</option>
-            </select>
-          </div>
-        </div>
+        
 
         <div className="h-[60vh] flex items-center justify-center card">
           <div className="text-center p-8">
@@ -247,22 +233,7 @@ export default function Main({ selection, onEditChampion }){
 
   return (
     <main className="flex-1 p-6 overflow-auto">
-      <div className="mb-4 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <FilterPill active>Combo</FilterPill>
-          <FilterPill>Blockstring</FilterPill>
-          <FilterPill>Setup</FilterPill>
-          <FilterPill>Beginner</FilterPill>
-          <FilterPill>Advanced</FilterPill>
-        </div>
-        <div className="flex items-center gap-3 text-text-muted">
-          <span>Sort by:</span>
-          <select className="bg-[transparent] border border-[rgba(255,255,255,0.04)] rounded p-1 text-sm">
-            <option>Most Recent</option>
-            <option>Alphabetical</option>
-          </select>
-        </div>
-      </div>
+      
 
       {/* Sub-menu tabs */}
       <div className="mb-4 flex items-center justify-between">
@@ -325,6 +296,25 @@ export default function Main({ selection, onEditChampion }){
                   {activeChampion && activeChampion.metadata && activeChampion.metadata.notes ? (
                     (() => {
                       const raw = String(activeChampion.metadata.notes || '')
+
+                      // If the stored notes already contain HTML tags, sanitize and render them.
+                      // If they are plain text (no tags) keep the previous line-splitting list behavior.
+                      // Also handle the case where HTML was double-encoded (contains &lt; or &amp;lt;).
+                      let htmlToRender = null
+                      if (raw.includes('<')) {
+                        htmlToRender = DOMPurify.sanitize(raw)
+                      } else if (raw.includes('&lt;')) {
+                        // decode HTML entities, then sanitize
+                        const decoded = (typeof window !== 'undefined') ? new DOMParser().parseFromString(raw, 'text/html').documentElement.textContent : raw
+                        htmlToRender = DOMPurify.sanitize(decoded)
+                      }
+
+                      if (htmlToRender) {
+                        return (
+                          <div className="prose prose-invert text-sm text-[rgba(255,255,255,0.9)] leading-relaxed max-w-none" dangerouslySetInnerHTML={{ __html: htmlToRender }} />
+                        )
+                      }
+
                       const lines = raw.split('\n').map(l => l.trim()).filter(Boolean)
                       return (
                         <ul className="space-y-4">
@@ -356,6 +346,23 @@ export default function Main({ selection, onEditChampion }){
             ) : (
               <p className="text-sm text-text-muted mb-4">Showing all combos for {activeChampion ? activeChampion.name : getChampionName(selection.main)}</p>
             )}
+
+            <div className="mb-4 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <FilterPill active>Combo</FilterPill>
+                <FilterPill>Blockstring</FilterPill>
+                <FilterPill>Setup</FilterPill>
+                <FilterPill>Beginner</FilterPill>
+                <FilterPill>Advanced</FilterPill>
+              </div>
+              <div className="flex items-center gap-3 text-text-muted">
+                <span>Sort by:</span>
+                <select className="bg-[transparent] border border-[rgba(255,255,255,0.04)] rounded p-1 text-sm">
+                  <option>Most Recent</option>
+                  <option>Alphabetical</option>
+                </select>
+              </div>
+            </div>
 
             <div className="space-y-3">
               {(() => {

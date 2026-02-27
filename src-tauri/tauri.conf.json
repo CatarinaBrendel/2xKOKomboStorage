@@ -13,9 +13,9 @@
       {
         "title": "2xKO Kombo Storage",
         "width": 1280,
-        "height": 820,
+        "height": 860,
         "minWidth": 1280,
-        "minHeight": 820,
+        "minHeight": 860,
         "resizable": true,
         "fullscreen": false
       }

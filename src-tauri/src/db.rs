@@ -77,6 +77,30 @@ pub fn run_migrations() -> Result<usize, Box<dyn std::error::Error>> {
     "CREATE TABLE IF NOT EXISTS schema_migrations (version INTEGER PRIMARY KEY, applied_at DATETIME DEFAULT CURRENT_TIMESTAMP);",
   )?;
 
+  // Ensure `combos` table has a `tags` column so backfill migrations can run.
+  // This is defensive: older databases may not have the column and applying
+  // a backfill UPDATE would fail with "no such column: tags".
+  {
+    let mut pragma_stmt = conn.prepare("PRAGMA table_info('combos')")?;
+    let pragma_iter = pragma_stmt.query_map([], |r| Ok(r.get::<_, String>(1)?))?;
+    let mut existing_cols: Vec<String> = Vec::new();
+    for col_res in pragma_iter {
+      if let Ok(col) = col_res { existing_cols.push(col) }
+    }
+
+    if !existing_cols.iter().any(|c| c == "tags") {
+      // Try to add the column; if it fails, log a warning and continue.
+      match conn.execute("ALTER TABLE combos ADD COLUMN tags JSON DEFAULT NULL", []) {
+        Ok(_) => {
+          log::info!("added 'tags' column to combos table")
+        }
+        Err(e) => {
+          log::warn!("failed to add 'tags' column to combos: {}", e);
+        }
+      }
+    }
+  }
+
   let mut entries: Vec<_> = std::fs::read_dir(migrations_dir())?
     .filter_map(Result::ok)
     .filter(|e| {
@@ -314,6 +338,10 @@ pub fn set_combos(champion_id: String, combos_json: String) -> Result<String, St
     conn.execute("ALTER TABLE champion_combos ADD COLUMN assist TEXT DEFAULT NULL", [])
       .map_err(|e| format!("failed to add column 'assist' to champion_combos: {}", e))?;
   }
+  if !existing_cols.iter().any(|c| c == "tags") {
+    conn.execute("ALTER TABLE champion_combos ADD COLUMN tags JSON DEFAULT NULL", [])
+      .map_err(|e| format!("failed to add column 'tags' to champion_combos: {}", e))?;
+  }
 
   // delete existing combos for this champion (in our namespaced table)
   conn.execute("DELETE FROM champion_combos WHERE champion_id = ?1", rusqlite::params![champion_id])
@@ -333,11 +361,20 @@ pub fn set_combos(champion_id: String, combos_json: String) -> Result<String, St
       let name = item.get("name").and_then(|v| v.as_str()).map(|s| s.to_string());
       let ranking = item.get("ranking").and_then(|v| v.as_i64());
       let assist = item.get("assist").and_then(|v| v.as_str()).map(|s| s.to_string());
+      // tags may be an array or string; store as JSON text
+      let tags_json = if let Some(t) = item.get("tags") {
+        match serde_json::to_string(t) {
+          Ok(s) => Some(s),
+          Err(_) => None,
+        }
+      } else {
+        None
+      };
 
       let id = Uuid::new_v4().to_string();
       conn.execute(
-        "INSERT INTO champion_combos (id, champion_id, line, fuse, sort_order, name, ranking, assist) VALUES (?1,?2,?3,?4,?5,?6,?7,?8)",
-        rusqlite::params![id, champion_id, line, fuse, sort_order, name, ranking, assist],
+        "INSERT INTO champion_combos (id, champion_id, line, fuse, sort_order, name, ranking, tags, assist) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9)",
+        rusqlite::params![id, champion_id, line, fuse, sort_order, name, ranking, tags_json, assist],
       )
       .map_err(|e| format!("db insert error: {}", e))?;
     }

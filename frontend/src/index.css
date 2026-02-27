@@ -53,3 +53,68 @@ body {
 .btn-attack-medium { background-color: var(--btn-color-medium); color: var(--color-text-alt); }
 .btn-attack-heavy { background-color: var(--btn-color-heavy); color: var(--color-text-alt); }
 .btn-special { background-color: var(--btn-color-special); color: var(--color-bg-default); }
+
+.richtext-editor-content {
+	min-height: inherit;
+	color: var(--color-text-default);
+	line-height: 1.6;
+	word-break: break-word;
+}
+
+.richtext-editor-content p {
+	margin: 0.35rem 0;
+}
+
+.richtext-editor-content h2,
+.richtext-editor-content h3 {
+	margin: 0.6rem 0 0.35rem;
+	font-weight: 600;
+	line-height: 1.35;
+}
+
+.richtext-editor-content h2 {
+	font-size: 1.05rem;
+}
+
+.richtext-editor-content h3 {
+	font-size: 0.98rem;
+}
+
+.richtext-editor-content ul,
+.richtext-editor-content ol {
+	margin: 0.35rem 0 0.5rem;
+	padding-left: 1.2rem;
+}
+
+.richtext-editor-content ul {
+	list-style-type: disc;
+}
+
+.richtext-editor-content ol {
+	list-style-type: decimal;
+}
+
+.richtext-editor-content li {
+	margin: 0.15rem 0;
+}
+
+.richtext-editor-content li > ul {
+	list-style-type: circle;
+}
+
+.richtext-editor-content li > ol {
+	list-style-type: lower-alpha;
+}
+
+.richtext-editor-content a {
+	color: var(--color-accent-secondary);
+	text-decoration: underline;
+}
+
+.richtext-editor-content p.is-editor-empty:first-child::before {
+	content: attr(data-placeholder);
+	float: left;
+	color: var(--color-text-muted);
+	pointer-events: none;
+	height: 0;
+}

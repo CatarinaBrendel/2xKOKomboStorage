@@ -1,18 +1,54 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
+import RichTextEditor from './RichTextEditor'
 import { Trash2 } from 'lucide-react'
 
 function Wizard({ steps = [], data = {}, onChange = () => {}, onFinish = () => {}, onCancel = () => {}, currentImageUrl = null, championsList = [] }){
   const [stepIndex, setStepIndex] = useState(0)
-  const [local, setLocal] = useState(data)
+  const [local, setLocal] = useState({
+    name: '',
+    key: '',
+    role: '',
+    notes: '',
+    combos: [],
+    abilities: '',
+    strategy: '',
+    teams: '',
+    matchups: '',
+    imagePreview: null,
+    ...data
+  })
+  const [tagInputs, setTagInputs] = useState({})
+  const WizardSyncPrev = useRef(null)
 
-  useEffect(() => setLocal(data), [data])
+  useEffect(() => {
+    // merge incoming data with sensible defaults so inputs are populated when
+    // a new champion is opened for editing (guard to avoid stomping local edits)
+    const incomingRole = (data && (data.role || data.type)) ? (data.role || data.type) : undefined
+    const incomingKey = data && (data.key || data.code || '')
+    const incomingId = data && data.id
+
+    // track previous identity to only sync when identity changes
+    if (!WizardSyncPrev.current) WizardSyncPrev.current = { id: null, key: null }
+    const prev = WizardSyncPrev.current
+
+    const shouldSync = (incomingId && incomingId !== prev.id) || (!incomingId && incomingKey && incomingKey !== prev.key)
+    if (shouldSync) {
+      setLocal(prevLocal => ({
+        name: '', key: '', role: '', notes: '', combos: [], abilities: '', strategy: '', teams: '', matchups: '', imagePreview: null,
+        ...prevLocal,
+        ...data,
+        ...(incomingRole !== undefined ? { role: incomingRole } : {})
+      }))
+      WizardSyncPrev.current = { id: incomingId || null, key: incomingKey || null }
+    }
+  }, [data])
 
   const step = steps[stepIndex]
 
   function update(updates){
     const next = { ...local, ...updates }
     setLocal(next)
-    onChange(next)
+    try { console.debug('Wizard.update', updates) } catch (e) {}
   }
 
   return (
@@ -66,7 +102,7 @@ function Wizard({ steps = [], data = {}, onChange = () => {}, onFinish = () => {
 
             <div className="col-span-2">
               <label className="block text-xs text-text-muted">Notes</label>
-              <textarea className="w-full h-full min-h-[220px] p-2 rounded bg-[transparent] border border-[rgba(255,255,255,0.04)]" value={local.notes||''} onChange={(e) => update({ notes: e.target.value })} />
+              <RichTextEditor value={local.notes||''} onChange={(val) => update({ notes: val })} placeholder="Notes — use the toolbar to add headers, paragraphs, lists and links" minHeight={320} />
             </div>
           </div>
         )}
@@ -74,14 +110,9 @@ function Wizard({ steps = [], data = {}, onChange = () => {}, onFinish = () => {
         {step === 'Combos' && (
           <div>
             <p className="text-text-muted mb-2">Add default combos; choose a Fuse for each.</p>
+
             {(() => {
-              const fuseOptions = [
-                '2x Assist',
-                'Double Down',
-                'Freestyle',
-                'Juggernaut',
-                'Sidekick'
-              ]
+              const fuseOptions = ['2x Assist','Double Down','Freestyle','Juggernaut','Sidekick']
               const asArray = Array.isArray(local.combos)
                 ? local.combos
                 : (local.combos ? String(local.combos).split('\n').map((l) => ({ line: l, fuse: 'Freestyle', name: '', ranking: null, assist: '' })) : [])
@@ -90,77 +121,82 @@ function Wizard({ steps = [], data = {}, onChange = () => {}, onFinish = () => {
 
               return (
                 <div className="space-y-2">
-                  {asArray.length === 0 && (
-                    <div className="flex items-center gap-2">
-                      <div className="text-text-muted">No combos yet.</div>
-                      <button type="button" onClick={() => { const copy = asArray.slice(); copy.push({ line: '', fuse: 'Freestyle' }); setCombos(copy) }} className="px-2 py-1 rounded bg-[var(--color-accent-primary)] text-white text-sm">Add combo</button>
+                  <div className="flex items-center justify-between">
+                    <div className="text-text-muted">{asArray.length} combos</div>
+                    <div>
+                      <button type="button" onClick={() => { const copy = asArray.slice(); copy.push({ line: '', fuse: 'Freestyle', name: '', ranking: null, assist: null, tags: [] }); setCombos(copy) }} className="px-3 py-1 rounded bg-[var(--color-accent-primary)] text-white text-sm">+ Combo</button>
                     </div>
-                  )}
+                  </div>
 
-                  {asArray.map((cmb, idx) => (
-                    <div key={idx} className="flex items-start gap-2">
-                      <div className="flex flex-col gap-1 flex-1">
-                        <input className="w-full p-1 rounded bg-[transparent] border border-[rgba(255,255,255,0.04)] text-sm" value={cmb.name||''} onChange={(e) => { const copy = asArray.slice(); copy[idx] = { ...copy[idx], name: e.target.value }; setCombos(copy) }} placeholder="Combo name (optional)" />
-                        <textarea rows={2} className="w-full p-2 rounded bg-[transparent] border border-[rgba(255,255,255,0.04)]" value={cmb.line||''} onChange={(e) => {
-                          const copy = asArray.slice(); copy[idx] = { ...copy[idx], line: e.target.value }
-                          setCombos(copy)
-                        }} placeholder="Combo line" />
-                      </div>
+                  <div className="max-h-[330px] overflow-y-auto pr-2">
+                    <div className="grid grid-cols-1 gap-3 mt-2">
+                      {asArray.map((cmb, idx) => {
+                        const tags = Array.isArray(cmb.tags) ? cmb.tags : (cmb.tags ? String(cmb.tags).split(',').map(t => t.trim()).filter(Boolean) : [])
+                        const selectedAssistId = cmb && cmb.assist ? cmb.assist : ''
 
-                      <div className="flex flex-col gap-1 w-36">
-                        <select className="p-2 rounded bg-[transparent] border border-[rgba(255,255,255,0.04)] text-sm" value={cmb.fuse||'Freestyle'} onChange={(e) => {
-                          const copy = asArray.slice(); copy[idx] = { ...copy[idx], fuse: e.target.value }
-                          setCombos(copy)
-                        }}>
-                          {fuseOptions.map((f) => (<option key={f} value={f}>{f}</option>))}
-                        </select>
-                        <div className="flex gap-2">
-                          <input type="number" className="w-1/2 p-1 rounded bg-[transparent] border border-[rgba(255,255,255,0.04)] text-sm" value={cmb.ranking!=null?cmb.ranking:''} onChange={(e) => { const copy = asArray.slice(); const v = e.target.value === '' ? null : parseInt(e.target.value, 10); copy[idx] = { ...copy[idx], ranking: v }; setCombos(copy) }} placeholder="Rank" />
-                          {(() => {
-                            const selectedAssistId = (() => {
-                              if (!cmb || !cmb.assist) return ''
-                              const byId = championsList.find(x => x.id === cmb.assist)
-                              if (byId) return byId.id
-                              const byName = championsList.find(x => x.name === cmb.assist)
-                              if (byName) return byName.id
-                              return ''
-                            })()
+                        return (
+                          <div key={idx} className="border border-[rgba(255,255,255,0.04)] rounded p-3 flex items-start gap-4 bg-[rgba(255,255,255,0.01)]">
+                            <div className="flex-1">
+                              <input className="w-full p-2 mb-2 rounded bg-[transparent] border border-[rgba(255,255,255,0.04)] text-sm" value={cmb.name||''} onChange={(e) => { const copy = asArray.slice(); copy[idx] = { ...copy[idx], name: e.target.value }; setCombos(copy) }} placeholder="Title (optional)" />
+                              <textarea rows={3} className="w-full p-2 rounded bg-[transparent] border border-[rgba(255,255,255,0.04)] text-sm" value={cmb.line||''} onChange={(e) => { const copy = asArray.slice(); copy[idx] = { ...copy[idx], line: e.target.value }; setCombos(copy) }} placeholder="Combo string" />
 
-                            return (
-                              <select className="w-1/2 p-1 rounded bg-[transparent] border border-[rgba(255,255,255,0.04)] text-sm" value={selectedAssistId} onChange={(e) => { const copy = asArray.slice(); copy[idx] = { ...copy[idx], assist: e.target.value }; setCombos(copy) }}>
+                              <div className="mt-2 w-full">
+                                <div className="flex items-center gap-2">
+                                  <div className="flex items-center flex-wrap gap-2 p-1 rounded border border-[rgba(255,255,255,0.04)] flex-1">
+                                    {tags.map((t, ti) => (
+                                      <div key={ti} className="flex items-center gap-2 bg-[rgba(255,255,255,0.03)] rounded px-2 py-0.5 text-sm">
+                                        <div className="text-text-muted">{t}</div>
+                                        <button type="button" title="Remove tag" onClick={() => { const copy = asArray.slice(); const cur = Array.isArray(copy[idx].tags) ? copy[idx].tags.slice() : (copy[idx].tags ? String(copy[idx].tags).split(',').map(x=>x.trim()).filter(Boolean) : []); cur.splice(ti,1); copy[idx] = { ...copy[idx], tags: cur }; setCombos(copy) }} className="text-text-muted">✕</button>
+                                      </div>
+                                    ))}
+
+                                    <input
+                                      className="flex-1 min-w-[120px] p-1 bg-[transparent] outline-none text-sm"
+                                      placeholder="Add tag and press Enter"
+                                      value={tagInputs[idx]||''}
+                                      onChange={(e) => setTagInputs({ ...tagInputs, [idx]: e.target.value })}
+                                      onKeyDown={(e) => {
+                                        if (e.key === 'Enter') {
+                                          e.preventDefault()
+                                          const v = (tagInputs[idx] || '').trim()
+                                          if (!v) return
+                                          const parts = v.split(',').map(t => t.trim()).filter(Boolean)
+                                          const copy = asArray.slice()
+                                          const cur = Array.isArray(copy[idx].tags) ? copy[idx].tags.slice() : (copy[idx].tags ? String(copy[idx].tags).split(',').map(x=>x.trim()).filter(Boolean) : [])
+                                          copy[idx] = { ...copy[idx], tags: Array.from(new Set(cur.concat(parts))) }
+                                          setCombos(copy)
+                                          setTagInputs({ ...tagInputs, [idx]: '' })
+                                        }
+                                      }}
+                                    />
+                                  </div>
+
+                                  <button type="button" title="Delete combo" aria-label="Delete combo" onClick={() => { const copy = asArray.slice(); copy.splice(idx,1); setCombos(copy) }} className="p-2 rounded hover:bg-[rgba(255,0,0,0.08)] text-rose-400">
+                                    <Trash2 size={16} />
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="w-44 flex flex-col gap-2">
+                              <select className="p-2 rounded bg-[transparent] border border-[rgba(255,255,255,0.04)] text-sm" value={cmb.fuse||'Freestyle'} onChange={(e) => { const copy = asArray.slice(); copy[idx] = { ...copy[idx], fuse: e.target.value }; setCombos(copy) }}>
+                                {fuseOptions.map((f) => (<option key={f} value={f}>{f}</option>))}
+                              </select>
+
+                              <input type="number" className="w-full p-2 rounded bg-[transparent] border border-[rgba(255,255,255,0.04)] text-sm" value={cmb.ranking!=null?cmb.ranking:''} onChange={(e) => { const copy = asArray.slice(); const v = e.target.value === '' ? null : parseInt(e.target.value, 10); copy[idx] = { ...copy[idx], ranking: v }; setCombos(copy) }} placeholder="Rank" />
+
+                              <select className="w-full p-2 rounded bg-[transparent] border border-[rgba(255,255,255,0.04)] text-sm" value={selectedAssistId} onChange={(e) => { const copy = asArray.slice(); copy[idx] = { ...copy[idx], assist: e.target.value }; setCombos(copy) }}>
                                 <option value="">— none —</option>
-                                {championsList && championsList.length > 0 && championsList.map((c) => (
+                                {championsList && championsList.length > 0 && championsList.filter(c => !(local && local.id && String(c.id) === String(local.id))).map((c) => (
                                   <option key={c.id} value={c.id}>{c.name}</option>
                                 ))}
                               </select>
-                            )
-                          })()}
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => { const copy = asArray.slice(); copy.splice(idx+1,0,{ line: '', fuse: 'Freestyle', name: '', ranking: null, assist: '' }); setCombos(copy) }}
-                          className="w-8 h-8 flex items-center justify-center rounded bg-[var(--color-accent-primary)] text-white text-sm"
-                          title="add combo"
-                          aria-label="add combo"
-                        >
-                          +
-                        </button>
-
-                        <button
-                          type="button"
-                          title="remove"
-                          aria-label="remove combo"
-                          onClick={() => { const copy = asArray.slice(); copy.splice(idx,1); setCombos(copy) }}
-                          className="w-8 h-8 flex items-center justify-center rounded bg-rose-600 text-white text-sm"
-                        >
-                          <Trash2 size={16} />
-                        </button>
-                      </div>
+                            </div>
+                          </div>
+                        )
+                      })}
                     </div>
-                  ))}
+                  </div>
                 </div>
               )
             })()}
@@ -169,29 +205,29 @@ function Wizard({ steps = [], data = {}, onChange = () => {}, onFinish = () => {
 
         {step === 'Abilities' && (
           <div>
-            <p className="text-text-muted mb-2">Add ability notes (placeholder).</p>
-            <textarea className="w-full p-2 rounded bg-[transparent] border border-[rgba(255,255,255,0.04)]" value={local.abilities||''} onChange={(e) => update({ abilities: e.target.value })} />
+            <p className="text-text-muted mb-2">Add ability notes (use formatting toolbar).</p>
+            <RichTextEditor value={local.abilities||''} onChange={(val) => update({ abilities: val })} placeholder="Ability notes" minHeight={180} />
           </div>
         )}
 
         {step === 'Strategy' && (
           <div>
             <p className="text-text-muted mb-2">Strategy tips and notes.</p>
-            <textarea className="w-full p-2 rounded bg-[transparent] border border-[rgba(255,255,255,0.04)] min-h-[300px]" value={local.strategy||''} onChange={(e) => update({ strategy: e.target.value })} />
+            <RichTextEditor value={local.strategy||''} onChange={(val) => update({ strategy: val })} placeholder="Strategy notes" minHeight={420} />
           </div>
         )}
 
         {step === 'Teams' && (
           <div>
-            <p className="text-text-muted mb-2">Team presets (placeholder).</p>
-            <textarea className="w-full p-2 rounded bg-[transparent] border border-[rgba(255,255,255,0.04)]" value={local.teams||''} onChange={(e) => update({ teams: e.target.value })} />
+            <p className="text-text-muted mb-2">Team presets (use formatting to structure lists).</p>
+            <RichTextEditor value={local.teams||''} onChange={(val) => update({ teams: val })} placeholder="Teams / presets" minHeight={180} />
           </div>
         )}
 
         {step === 'Matchups' && (
           <div>
             <p className="text-text-muted mb-2">Matchup counters and notes.</p>
-            <textarea className="w-full p-2 rounded bg-[transparent] border border-[rgba(255,255,255,0.04)]" value={local.matchups||''} onChange={(e) => update({ matchups: e.target.value })} />
+            <RichTextEditor value={local.matchups||''} onChange={(val) => update({ matchups: val })} placeholder="Matchups" minHeight={180} />
           </div>
         )}
       </div>
@@ -216,21 +252,34 @@ function Wizard({ steps = [], data = {}, onChange = () => {}, onFinish = () => {
 
 export default function AddChampionModal({ show, onClose, newChampion, setNewChampion, championsList = [], championImages = {}, onFinish }){
   if (!show) return null
+  // try to resolve champion id from provided championsList using key/name so we can show thumbnail
+  let resolvedImageUrl = null
+  try {
+    const key = newChampion && (newChampion.key || newChampion.code || '')
+    const filenameNoExt = key ? String(key).replace(/\.[^/.]+$/, '') : ''
+    const found = championsList && championsList.length > 0 ? championsList.find(c => c && (c.code === key || c.code === filenameNoExt || c.slug === filenameNoExt || c.name === (newChampion && newChampion.name))) : null
+    if (found && found.id && championImages && championImages[found.id]) resolvedImageUrl = championImages[found.id]
+    // fallback to explicit id on newChampion
+    if (!resolvedImageUrl && newChampion && newChampion.id && championImages && championImages[newChampion.id]) resolvedImageUrl = championImages[newChampion.id]
+  } catch (e) {
+    // ignore
+  }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       <div className="absolute inset-0 bg-black opacity-60" onClick={onClose} />
-      <div className="relative z-10 w-[725px] min-h-[525px] max-h-[525px] bg-[var(--color-bg-panel)] border border-[var(--color-bg-border)] rounded p-4 flex flex-col overflow-hidden">
+      <div className="relative z-10 w-[925px] min-h-[675px] max-h-[525px] bg-[var(--color-bg-panel)] border border-[var(--color-bg-border)] rounded p-4 flex flex-col overflow-hidden">
         <div className="flex items-center justify-between mb-3">
-          <h3 className="text-lg font-semibold">Add Champion</h3>
+          <h3 className="text-lg font-semibold">{newChampion && (newChampion.id || (newChampion.key && String(newChampion.key).trim() !== '')) ? 'Edit Champion' : 'Add Champion'}</h3>
           <button type="button" className="p-1 rounded hover:bg-[rgba(255,255,255,0.02)]" onClick={onClose} aria-label="Close">✕</button>
         </div>
 
         <Wizard
+          key={newChampion && (newChampion.id || newChampion.key) ? String(newChampion.id || newChampion.key) : 'new'}
           steps={["Overview","Combos","Abilities","Strategy","Teams","Matchups"]}
           data={newChampion}
           onChange={(nextData) => setNewChampion(nextData)}
-          currentImageUrl={ newChampion && newChampion.id ? championImages[newChampion.id] : null }
+          currentImageUrl={ resolvedImageUrl }
           championsList={championsList}
           onFinish={onFinish}
           onCancel={onClose}

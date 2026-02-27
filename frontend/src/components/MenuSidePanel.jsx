@@ -6,7 +6,7 @@ import AddChampionModal from './AddChampionModal'
 
  
 
-export default function MenuSidePanel({ selection: propSelection, onSelectionChange, showAddModal, setShowAddModal, newChampion, setNewChampion }){
+export default function MenuSidePanel({ selection: propSelection, onSelectionChange, showAddModal, setShowAddModal, newChampion, setNewChampion, searchQuery = '' }){
   const [championsList, setChampionsList] = useState([])
   const [championImages, setChampionImages] = useState({})
   const [toast, setToast] = useState(null)
@@ -209,7 +209,8 @@ export default function MenuSidePanel({ selection: propSelection, onSelectionCha
               sort_order: (typeof c.sort_order === 'number') ? c.sort_order : idx,
               name: c && c.name ? c.name : null,
               ranking: (typeof c.ranking === 'number') ? c.ranking : null,
-              assist: c && c.assist ? c.assist : null
+              assist: c && c.assist ? c.assist : null,
+              tags: Array.isArray(c.tags) ? c.tags : (c.tags ? String(c.tags).split(',').map(x=>x.trim()).filter(Boolean) : null)
             }))
           await tauri.invoke('set_combos', { championId: id, combosJson: JSON.stringify(combosPayload) })
           // refresh champion to pick up DB combos
@@ -297,8 +298,27 @@ export default function MenuSidePanel({ selection: propSelection, onSelectionCha
   }, [])
 
   // Take champions to show (2 columns x 6 rows)
-  const thumbnails = (championsList && championsList.length > 0)
-    ? championsList.slice(0, 12).map(c => ({
+  // apply search filtering to champions list (match name, code, slug, notes)
+  const filteredChampions = (championsList && championsList.length > 0) ? championsList.filter(c => {
+    if (!searchQuery || String(searchQuery).trim() === '') return true
+    const q = String(searchQuery).toLowerCase()
+    const name = (c.name || '').toString().toLowerCase()
+    const code = (c.code || '').toString().toLowerCase()
+    const slug = (c.slug || '').toString().toLowerCase()
+    let notes = ''
+    try {
+      if (c.metadata) {
+        if (typeof c.metadata === 'string') notes = c.metadata.toLowerCase()
+        else if (c.metadata.notes) notes = String(c.metadata.notes).toLowerCase()
+        else notes = JSON.stringify(c.metadata).toLowerCase()
+      }
+    } catch (e) { notes = '' }
+
+    return name.includes(q) || code.includes(q) || slug.includes(q) || notes.includes(q)
+  }) : []
+
+  const thumbnails = (filteredChampions && filteredChampions.length > 0)
+    ? filteredChampions.slice(0, 12).map(c => ({
         id: c.id,
         filename: c.code || c.id,
         name: c.name,

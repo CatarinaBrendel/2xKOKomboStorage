@@ -7,13 +7,13 @@ export default function ComboVisual({ line }){
 
   const tokenColor = (tok) => {
     const t = String(tok).toUpperCase()
-    if (t === 'S1') return 'bg-blue-500'
-    if (t === 'S2') return 'bg-rose-500'
-    if (t.startsWith('S')) return 'bg-rose-500'
-    if (t === 'H') return 'bg-purple-700'
+    if (t === 'S1') return 'bg-blue-500 text-white'
+    if (t === 'S2') return 'bg-rose-500 text-white'
+    if (t.startsWith('S')) return 'bg-rose-500 text-white'
+    if (t === 'H') return 'bg-purple-700 text-white'
     if (t === 'T') return 'bg-lime-300 text-gray-900'
-    if (t === 'L') return 'bg-purple-300 text-black'
-    return 'bg-violet-500'
+    if (t === 'L') return 'bg-purple-300 text-gray-900'
+    return 'bg-violet-500 text-white'
   }
 
   const parsePart = (part) => {
@@ -80,7 +80,7 @@ export default function ComboVisual({ line }){
                       {p.label && (
                         <div className="absolute -top-4 left-1/2 transform -translate-x-1/2 text-[10px] text-text-muted">({p.label})</div>
                       )}
-                      <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white font-bold border-2 border-black ${tokenColor(p.symbol)}`}>
+                      <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold border-2 border-black ${tokenColor(p.symbol)}`}>
                         {p.symbol}
                       </div>
                       <div className="absolute -left-5 top-1/2 transform -translate-y-1/2 w-5 h-5 flex items-center justify-center">
@@ -111,7 +111,7 @@ export default function ComboVisual({ line }){
             <div key={i} className="flex items-center gap-2">
               <div className={`relative flex flex-col items-center ${p.dir ? 'ml-4' : ''}`}>
                 {p.label && <div className="absolute -top-4 left-1/2 transform -translate-x-1/2 text-[10px] text-text-muted">({p.label})</div>}
-                <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white font-bold border-2 border-black ${tokenColor(p.symbol)}`}>
+                <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold border-2 border-black ${tokenColor(p.symbol)}`}>
                   {p.symbol}
                 </div>
                 <div className="absolute -left-5 top-1/2 transform -translate-y-1/2 w-5 h-5 flex items-center justify-center">

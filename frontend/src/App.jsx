@@ -8,6 +8,11 @@ export default function App(){
   const [selection, setSelection] = useState({ main: null, assist: null })
   const [showAddModal, setShowAddModal] = useState(false)
   const [newChampion, setNewChampion] = useState({ name: '', key: '', role: '', notes: '' })
+  const [searchQuery, setSearchQuery] = useState('')
+
+  React.useEffect(() => {
+    try { console.debug('App.newChampion changed', newChampion) } catch (e) {}
+  }, [newChampion])
 
   function getChampionName(filename) {
     if (!filename) return ''
@@ -20,8 +25,10 @@ export default function App(){
   // Open the wizard for editing an existing champion (prefill basic fields)
   function openEditChampion(filename){
     const name = getChampionName(filename) || ''
-    // open modal immediately, then try to fetch full champion from backend
+    // prefill minimal info and open modal immediately, then try to fetch full champion from backend
     console.log('openEditChampion', filename)
+    // set a basic prefilled champion so modal opens in edit mode immediately
+    setNewChampion({ name, key: filename || '', role: '', notes: '' })
     setShowAddModal(true)
     ;(async () => {
       const tauri = await getTauriModule()
@@ -120,10 +127,11 @@ export default function App(){
         setShowAddModal={setShowAddModal}
         newChampion={newChampion}
         setNewChampion={setNewChampion}
+        searchQuery={searchQuery}
       />
       <div className="flex-1 flex flex-col overflow-hidden">
-        <Topbar />
-        <Main selection={selection} onEditChampion={openEditChampion} />
+        <Topbar value={searchQuery} onChange={setSearchQuery} />
+        <Main selection={selection} onEditChampion={openEditChampion} searchQuery={searchQuery} />
       </div>
     </div>
   )
