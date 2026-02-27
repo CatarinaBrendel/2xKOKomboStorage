@@ -19,23 +19,6 @@ function FilterPill({children, active}){
   )
 }
 
-function ChampionList({ champions = [], onEditChampion }){
-  if (!champions || champions.length === 0) return null
-  return (
-    <div className="mb-4">
-      <h3 className="text-sm text-text-muted mb-2">Champions</h3>
-      <div className="flex gap-2 overflow-x-auto">
-        {champions.map(c => (
-          <button key={c.id} onClick={() => onEditChampion && onEditChampion(c.code)} className="flex-shrink-0 w-28 p-2 bg-[rgba(255,255,255,0.02)] rounded text-sm text-left">
-            <div className="font-semibold">{c.name}</div>
-            <div className="text-xs text-text-muted truncate">{c.code}</div>
-          </button>
-        ))}
-      </div>
-    </div>
-  )
-}
-
 export default function Main({ selection, onEditChampion }){
   const [activeTab, setActiveTab] = useState('Overview')
   const [champions, setChampions] = useState([])

@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import logoUrl from '../assets/logo_nobg.png'
 import getTauriModule from '../utils/tauri'
-import ComboVisual from './ComboVisual'
 import AddChampionModal from './AddChampionModal'
 
  
@@ -449,7 +448,7 @@ export default function MenuSidePanel({ selection: propSelection, onSelectionCha
       <div className="flex-1 overflow-y-auto">
         <div className="grid grid-cols-2 grid-rows-6 gap-1 mb-4 w-max mx-auto justify-items-center">
         {thumbnails.length > 0 ? (
-        thumbnails.map((img, i) => {
+        thumbnails.map((img) => {
           const name = img.name || getChampionName(img.filename)
           const isMain = selection.main === img.filename
           const isAssist = selection.assist === img.filename

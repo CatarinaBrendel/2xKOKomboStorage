@@ -131,7 +131,7 @@ export default function App(){
       />
       <div className="flex-1 flex flex-col overflow-hidden">
         <Topbar value={searchQuery} onChange={setSearchQuery} />
-        <Main selection={selection} onEditChampion={openEditChampion} searchQuery={searchQuery} />
+        <Main selection={selection} onEditChampion={openEditChampion} />
       </div>
     </div>
   )
