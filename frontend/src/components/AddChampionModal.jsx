@@ -259,8 +259,8 @@ function Wizard({ steps = [], data = {}, onChange = () => {}, onFinish = () => {
 
       <div className="mt-3 flex items-center justify-between">
         <div>
-          <button type="button" onClick={() => { setStepIndex(Math.max(0, stepIndex-1)) }} className="px-3 py-1 rounded bg-[rgba(255,255,255,0.03)] mr-2">Back</button>
-          <button type="button" onClick={() => { setStepIndex(Math.min(steps.length-1, stepIndex+1)) }} className="px-3 py-1 rounded bg-[rgba(255,255,255,0.03)]">Next</button>
+          <button type="button" onClick={() => { setStepIndex(Math.max(0, stepIndex-1)) }} className="px-3 py-1 rounded bg-[rgba(255,255,255,0.03)] text-text-muted mr-2">Back</button>
+          <button type="button" onClick={() => { setStepIndex(Math.min(steps.length-1, stepIndex+1)) }} className="px-3 py-1 rounded bg-[rgba(255,255,255,0.03)] text-text-muted">Next</button>
         </div>
         <div className="flex items-center gap-2">
           {local && local.id ? (
@@ -273,7 +273,7 @@ function Wizard({ steps = [], data = {}, onChange = () => {}, onFinish = () => {
               {isDeleting ? 'Deleting…' : 'Delete'}
             </button>
           ) : null}
-          <button type="button" onClick={onCancel} className="px-3 py-1 rounded bg-[rgba(255,255,255,0.03)]">Cancel</button>
+          <button type="button" onClick={onCancel} className="px-3 py-1 rounded bg-[rgba(255,255,255,0.03)] text-text-muted">Cancel</button>
           {stepIndex === steps.length-1 ? (
             <button type="button" onClick={() => onFinish(local)} className="px-3 py-1 rounded bg-[var(--color-accent-primary)] text-white">Finish</button>
           ) : (
@@ -337,7 +337,14 @@ export default function AddChampionModal({ show, onClose, newChampion, setNewCha
       <div className="relative z-10 w-[925px] min-h-[675px] max-h-[525px] bg-[var(--color-bg-panel)] border border-[var(--color-bg-border)] rounded p-4 flex flex-col overflow-hidden">
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-lg font-semibold">{newChampion && (newChampion.id || (newChampion.key && String(newChampion.key).trim() !== '')) ? 'Edit Champion' : 'Add Champion'}</h3>
-          <button type="button" className="p-1 rounded hover:bg-[rgba(255,255,255,0.02)]" onClick={onClose} aria-label="Close">✕</button>
+          <button
+            type="button"
+            className="w-8 h-8 rounded border border-[rgba(255,255,255,0.12)] text-text-muted hover:bg-[rgba(255,255,255,0.04)]"
+            onClick={onClose}
+            aria-label="Close"
+          >
+            ✕
+          </button>
         </div>
 
         <Wizard

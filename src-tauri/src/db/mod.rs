@@ -4,6 +4,7 @@ mod images;
 mod combos;
 mod champions;
 mod notes;
+mod tournaments;
 
 pub fn run_migrations() -> Result<usize, Box<dyn std::error::Error>> {
   migrations::run_migrations()
@@ -72,6 +73,51 @@ pub fn duplicate_champion_note(note_id: String) -> Result<serde_json::Value, Str
 #[tauri::command]
 pub fn delete_champion_note(note_id: String) -> Result<String, String> {
   notes::delete_champion_note(note_id)
+}
+
+#[tauri::command]
+pub fn create_tournament(tournament_json: String) -> Result<serde_json::Value, String> {
+  tournaments::create_tournament(tournament_json)
+}
+
+#[tauri::command]
+pub fn list_tournaments() -> Result<serde_json::Value, String> {
+  tournaments::list_tournaments()
+}
+
+#[tauri::command]
+pub fn update_tournament(tournament_id: String, tournament_json: String) -> Result<serde_json::Value, String> {
+  tournaments::update_tournament(tournament_id, tournament_json)
+}
+
+#[tauri::command]
+pub fn delete_tournament(tournament_id: String) -> Result<String, String> {
+  tournaments::delete_tournament(tournament_id)
+}
+
+#[tauri::command]
+pub fn add_tournament_match(tournament_id: String, match_json: String) -> Result<serde_json::Value, String> {
+  tournaments::add_tournament_match(tournament_id, match_json)
+}
+
+#[tauri::command]
+pub fn update_tournament_match(match_id: String, match_json: String) -> Result<serde_json::Value, String> {
+  tournaments::update_tournament_match(match_id, match_json)
+}
+
+#[tauri::command]
+pub fn delete_tournament_match(match_id: String) -> Result<String, String> {
+  tournaments::delete_tournament_match(match_id)
+}
+
+#[tauri::command]
+pub fn list_tournament_matches(tournament_id: String) -> Result<serde_json::Value, String> {
+  tournaments::list_tournament_matches(tournament_id)
+}
+
+#[tauri::command]
+pub fn get_tournament_match(match_id: String) -> Result<serde_json::Value, String> {
+  tournaments::get_tournament_match(match_id)
 }
 
 #[tauri::command]

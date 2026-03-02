@@ -1,15 +1,17 @@
 import React, { useEffect, useState } from 'react'
+import { Plus } from 'lucide-react'
 import logoUrl from '../assets/logo_nobg.png'
 import getTauriModule from '../utils/tauri'
 import AddChampionModal from './AddChampionModal'
+import { useAppToast } from './AppToastProvider'
 
  
 
-export default function MenuSidePanel({ selection: propSelection, onSelectionChange, showAddModal, setShowAddModal, newChampion, setNewChampion, searchQuery = '' }){
+export default function MenuSidePanel({ selection: propSelection, onSelectionChange, mainArea = 'champions', onMainAreaChange, showAddModal, setShowAddModal, newChampion, setNewChampion, searchQuery = '' }){
   const [championsList, setChampionsList] = useState([])
   const [championImages, setChampionImages] = useState({})
-  const [toast, setToast] = useState(null)
   const [localSelection, setLocalSelection] = useState({ main: null, assist: null })
+  const { showToast } = useAppToast()
   const selection = propSelection || localSelection
   const setSelection = onSelectionChange || setLocalSelection
 
@@ -247,9 +249,9 @@ export default function MenuSidePanel({ selection: propSelection, onSelectionCha
     // Close modal, show toast and reset form
     setShowAddModalState(false)
     if (errors.length) {
-      setToast({ type: 'error', text: errors.join(' · ') })
+      showToast({ type: 'error', text: errors.join(' · ') })
     } else {
-      setToast({ type: 'success', text: 'Champion saved' })
+      showToast({ type: 'success', text: 'Champion saved' })
       try {
         window.dispatchEvent(new Event('champions:changed'))
       } catch (e) {
@@ -258,8 +260,6 @@ export default function MenuSidePanel({ selection: propSelection, onSelectionCha
     }
 
     setNewChampionState({ name: '', key: '', role: '', notes: '' })
-    // clear toast after a short delay
-    setTimeout(() => setToast(null), 3500)
   }
 
   async function handleWizardDelete(championData) {
@@ -324,17 +324,15 @@ export default function MenuSidePanel({ selection: propSelection, onSelectionCha
       // rollback optimistic UI update if deletion failed
       setChampionsList(previousChampionsList)
       setChampionImages(previousChampionImages)
-      setToast({ type: 'error', text: errors.join(' · ') })
+      showToast({ type: 'error', text: errors.join(' · ') })
     } else {
-      setToast({ type: 'success', text: 'Champion deleted' })
+      showToast({ type: 'success', text: 'Champion deleted' })
       try {
         window.dispatchEvent(new Event('champions:changed'))
       } catch (e) {
         console.debug('failed to dispatch champions:changed', e)
       }
     }
-
-    setTimeout(() => setToast(null), 3500)
   }
 
   // Load champions from DB when running inside Tauri
@@ -410,6 +408,7 @@ export default function MenuSidePanel({ selection: propSelection, onSelectionCha
   }
 
   function handleClick(filename) {
+    if (onMainAreaChange) onMainAreaChange('champions')
     setSelection(prev => {
       const isMain = prev && prev.main === filename
       const isAssist = prev && prev.assist === filename
@@ -426,22 +425,35 @@ export default function MenuSidePanel({ selection: propSelection, onSelectionCha
   return (
     <aside className="w-64 min-w-[220px] p-4 flex-shrink-0 h-screen flex flex-col" style={{borderRight:'1px solid var(--color-bg-border)'}}>
       <div className="flex-shrink-0">
-        <div className="mb-2 flex justify-center">
-          <img src={logoUrl} alt="logo" className="w-36 h-auto object-contain" />
+        <div className="mb-1 flex justify-center">
+          <img src={logoUrl} alt="logo" className="w-48 h-auto object-contain" />
         </div>
-        <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-xl font-bold">Champions</h2>
+        <div className="mb-2">
           <button
             type="button"
-            onClick={() => { setNewChampionState({ name: '', key: '', role: '', notes: '' }); setShowAddModalState(true) }}
+            onClick={() => { if (onMainAreaChange) onMainAreaChange('tournament') }}
+            className={`w-full text-left px-0 py-0.5 text-xl font-bold border-l-2 transition-colors ${mainArea === 'tournament' ? 'text-white border-[var(--color-accent-primary)] pl-2' : 'text-text-muted border-transparent hover:text-white/90 pl-2'}`}
+            title="Open Tournament"
+          >
+            Tournaments
+          </button>
+        </div>
+        <div className="mb-2 flex items-center justify-between">
+          <h2 className={`text-xl font-bold border-l-2 pl-2 py-0.5 ${mainArea === 'champions' ? 'text-white border-[var(--color-accent-primary)]' : 'text-text-muted border-transparent'}`}>
+            Champions
+          </h2>
+          <button
+            type="button"
+            onClick={() => {
+              if (onMainAreaChange) onMainAreaChange('champions')
+              setNewChampionState({ name: '', key: '', role: '', notes: '' })
+              setShowAddModalState(true)
+            }}
             className="ml-2 p-1 rounded hover:bg-[rgba(255,255,255,0.02)]"
             aria-label="Add champion"
             title="Add champion"
           >
-            {/* Lucide-style plus icon (inline SVG) */}
-            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-[var(--color-text-muted)]">
-              <path d="M12 5v14M5 12h14" />
-            </svg>
+            <Plus size={18} strokeWidth={1.5} className="text-[var(--color-text-muted)]" />
           </button>
         </div>
       </div>
@@ -516,12 +528,6 @@ export default function MenuSidePanel({ selection: propSelection, onSelectionCha
         onFinish={handleWizardFinish}
         onDelete={handleWizardDelete}
       />
-      {/* Toast */}
-      {toast && (
-        <div className={`fixed bottom-6 left-1/2 transform -translate-x-1/2 px-4 py-2 rounded ${toast.type === 'success' ? 'bg-emerald-600' : 'bg-rose-600'} text-white z-50`}>
-          {toast.text}
-        </div>
-      )}
     </aside>
   )
 }

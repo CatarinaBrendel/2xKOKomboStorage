@@ -1,9 +1,17 @@
 import React, { useState, useEffect, useRef } from 'react'
+import { Trash2 } from 'lucide-react'
 import DOMPurify from 'dompurify'
 import getTauriModule from '../utils/tauri'
-import ComboVisual from './ComboVisual'
-import NotesWorkspace from './NotesWorkspace'
-import RichTextEditor from './RichTextEditor'
+import { useAppToast } from './AppToastProvider'
+import { useAppConfirm } from './AppConfirmProvider'
+import OverviewTab from './mainTabs/OverviewTab'
+import CombosTab from './mainTabs/CombosTab'
+import AbilitiesTab from './mainTabs/AbilitiesTab'
+import StrategyTab from './mainTabs/StrategyTab'
+import TeamsTab from './mainTabs/TeamsTab'
+import MatchupsTab from './mainTabs/MatchupsTab'
+import NotesTab from './mainTabs/NotesTab'
+import TournamentArea from './mainTabs/TournamentArea'
 
 function getChampionName(filename) {
   if (!filename) return ''
@@ -13,15 +21,9 @@ function getChampionName(filename) {
   return matches[matches.length - 1]
 }
 
-function FilterPill({children, active}){
-  return (
-    <button className={`px-3 py-1 rounded-full text-sm ${active? 'bg-[var(--color-accent-primary)] text-white' : 'bg-[rgba(255,255,255,0.03)] text-text-muted'}`}>
-      {children}
-    </button>
-  )
-}
-
-export default function Main({ selection }){
+export default function Main({ selection, mainArea = 'champions', onSelectionChange }){
+  const { showToast } = useAppToast()
+  const { confirm } = useAppConfirm()
   const [activeTab, setActiveTab] = useState('Overview')
   const [champions, setChampions] = useState([])
   const [activeChampion, setActiveChampion] = useState(null)
@@ -31,6 +33,7 @@ export default function Main({ selection }){
   const [overviewDraft, setOverviewDraft] = useState({ name: '', role: '', notes: '' })
   const [comboDrafts, setComboDrafts] = useState([])
   const [isSavingSection, setIsSavingSection] = useState(false)
+  const [isDeletingChampion, setIsDeletingChampion] = useState(false)
   const [sectionSaveError, setSectionSaveError] = useState('')
   const isMountedRef = useRef(true)
 
@@ -400,6 +403,75 @@ export default function Main({ selection }){
     }
   }
 
+  async function deleteActiveChampion() {
+    const championId = activeChampion && activeChampion.id ? String(activeChampion.id) : ''
+    const championCode = activeChampion && activeChampion.code
+      ? String(activeChampion.code)
+      : (selection && selection.main ? String(selection.main) : '')
+
+    if (!championId && !championCode) {
+      showToast({ type: 'error', text: 'Missing champion id/code.' })
+      return
+    }
+
+    const approved = await confirm({
+      title: 'Delete Champion',
+      message: 'This action cannot be undone, are you sure you want to continue?',
+      confirmText: 'Delete',
+      cancelText: 'Cancel',
+      danger: true,
+    })
+    if (!approved) return
+
+    setIsDeletingChampion(true)
+    try {
+      const tauri = await getTauriModule()
+      if (!tauri) {
+        showToast({ type: 'error', text: 'Could not connect to app backend.' })
+        return
+      }
+
+      if (championId) {
+        try {
+          await tauri.invoke('delete_champion', { id: championId })
+        } catch (primaryErr) {
+          if (championCode) {
+            await tauri.invoke('delete_champion_by_code', { code: championCode })
+          } else {
+            throw primaryErr
+          }
+        }
+      } else {
+        await tauri.invoke('delete_champion_by_code', { code: championCode })
+      }
+
+      try {
+        window.dispatchEvent(new Event('champions:changed'))
+      } catch (e) {
+        console.debug('failed to dispatch champions:changed', e)
+      }
+
+      if (typeof onSelectionChange === 'function') {
+        onSelectionChange((prev) => ({
+          ...(prev || {}),
+          main: null,
+          assist: (prev && prev.assist === championCode) ? null : (prev ? prev.assist : null),
+        }))
+      }
+
+      setActiveChampion(null)
+      setActiveChampionIcon(null)
+      cancelInlineEdit()
+      showToast({ type: 'success', text: 'Champion deleted' })
+    } catch (e) {
+      console.error('deleteActiveChampion failed', e)
+      const message = e && e.message ? String(e.message) : 'Delete failed. Please try again.'
+      showToast({ type: 'error', text: message })
+    } finally {
+      setIsDeletingChampion(false)
+    }
+  }
+
   function renderRichSection(rawValue, emptyMessage) {
     const raw = rawValue ? String(rawValue || '') : ''
 
@@ -429,6 +501,10 @@ export default function Main({ selection }){
         ))}
       </div>
     )
+  }
+
+  if (mainArea === 'tournament') {
+    return <TournamentArea />
   }
 
   if (!selection || !selection.main) {
@@ -469,11 +545,26 @@ export default function Main({ selection }){
         </div>
 
         <div className="ml-4 flex items-center gap-2">
+          {activeChampion && (
+            <button
+              type="button"
+              onClick={deleteActiveChampion}
+              disabled={isDeletingChampion || isSavingSection}
+              className="w-8 h-8 rounded border border-[rgba(226,76,75,0.5)] text-rose-300 hover:bg-[rgba(226,76,75,0.16)] disabled:opacity-60"
+              title="Delete Champion"
+              aria-label="Delete Champion"
+            >
+              <Trash2 size={14} className="mx-auto" />
+            </button>
+          )}
           {isCurrentTabEditable && !isEditingCurrentTab && (
             <button
               type="button"
               onClick={beginInlineEdit}
-              className="px-3 py-1 rounded bg-[rgba(255,255,255,0.03)] hover:bg-[rgba(255,255,255,0.04)] text-sm text-text-muted"
+              disabled={isDeletingChampion}
+              title="Edit Champion"
+              aria-label="Edit Champion"
+              className="px-3 py-1 rounded bg-[rgba(255,255,255,0.03)] hover:bg-[rgba(255,255,255,0.04)] text-sm text-text-muted disabled:opacity-60"
             >
               Edit
             </button>
@@ -503,301 +594,90 @@ export default function Main({ selection }){
 
       {/* Tab content */}
       {activeTab === 'Overview' && (
-        <div className={scrollableCardClass}>
-          {sectionSaveError && <div className="mb-3 text-sm text-rose-400">{sectionSaveError}</div>}
-          <div className="flex items-start gap-6">
-            <div>
-              <div className="w-28 h-28 rounded-md bg-[rgba(255,255,255,0.02)] overflow-hidden flex items-center justify-center">
-                {activeChampionIcon ? (
-                  <img src={activeChampionIcon} alt={activeChampion && activeChampion.name} className="w-full h-full object-cover" />
-                ) : (
-                  <div className="text-xl text-text-muted">⭘</div>
-                )}
-              </div>
-            </div>
-            <div className="flex-1">
-              {isEditingCurrentTab ? (
-                <>
-                  <input
-                    className="w-full bg-transparent text-2xl font-semibold outline-none border border-[rgba(255,255,255,0.08)] rounded px-3 py-2 mb-2"
-                    value={overviewDraft.name}
-                    onChange={(e) => setOverviewDraft((prev) => ({ ...prev, name: e.target.value }))}
-                    placeholder="Champion name"
-                  />
-                  <div className="text-sm text-text-muted mb-3">{activeChampion ? (activeChampion.code || '') : selection.main}</div>
-                  <div className="mb-3 max-w-sm">
-                    <label className="block text-xs text-text-muted mb-1">Role</label>
-                    <input
-                      className="w-full bg-transparent text-sm outline-none border border-[rgba(255,255,255,0.08)] rounded px-3 py-2"
-                      value={overviewDraft.role}
-                      onChange={(e) => setOverviewDraft((prev) => ({ ...prev, role: e.target.value }))}
-                      placeholder="Role"
-                    />
-                  </div>
-                </>
-              ) : (
-                <>
-                  <h2 className="text-2xl font-semibold mb-1">{activeChampion ? activeChampion.name : getChampionName(selection.main)}</h2>
-                  <div className="text-sm text-text-muted mb-3">{activeChampion ? (activeChampion.code || '') : selection.main}</div>
-                  <div className="mb-3">
-                    <strong className="text-sm">Role:</strong> <span className="text-sm text-text-muted">{activeChampion && activeChampion.type ? activeChampion.type : '—'}</span>
-                  </div>
-                </>
-              )}
-              {/* Strategy intentionally omitted from Overview; shown in Strategy tab */}
-              <div className="mt-4">
-                <div className="border-t border-[rgba(255,255,255,0.04)] pt-4">
-                  <div className="text-sm text-text-muted font-semibold mb-4">NOTES</div>
-                  {isEditingCurrentTab ? (
-                    <RichTextEditor
-                      value={overviewDraft.notes}
-                      onChange={(val) => setOverviewDraft((prev) => ({ ...prev, notes: val }))}
-                      placeholder="Notes"
-                      minHeight={280}
-                    />
-                  ) : activeChampion && activeChampion.metadata && activeChampion.metadata.notes ? (
-                    renderRichSection(activeChampion.metadata.notes, 'No notes.')
-                  ) : (
-                    <div className="text-sm text-text-muted">No notes.</div>
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
+        <OverviewTab
+          scrollableCardClass={scrollableCardClass}
+          sectionSaveError={sectionSaveError}
+          activeChampionIcon={activeChampionIcon}
+          activeChampion={activeChampion}
+          selection={selection}
+          getChampionName={getChampionName}
+          isEditing={isEditingCurrentTab}
+          overviewDraft={overviewDraft}
+          setOverviewDraft={setOverviewDraft}
+          renderRichSection={renderRichSection}
+        />
       )}
 
       {activeTab === 'Combos' && (
-        selection && selection.main ? (
-          <div className={scrollableCardClass}>
-            <h2 className="text-2xl font-semibold mb-2">Combos for {activeChampion ? activeChampion.name : getChampionName(selection.main)}</h2>
-            {selection.assist ? (
-              <p className="text-sm text-text-muted mb-4">Filtering combos that include assist {getChampionName(selection.assist)}</p>
-            ) : (
-              <p className="text-sm text-text-muted mb-4">Showing all combos for {activeChampion ? activeChampion.name : getChampionName(selection.main)}</p>
-            )}
-
-            <div className="mb-4 flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <FilterPill active>Combo</FilterPill>
-                <FilterPill>Blockstring</FilterPill>
-                <FilterPill>Setup</FilterPill>
-                <FilterPill>Beginner</FilterPill>
-                <FilterPill>Advanced</FilterPill>
-              </div>
-              <div className="flex items-center gap-3 text-text-muted">
-                <span>Sort by:</span>
-                <select className="bg-[transparent] border border-[rgba(255,255,255,0.04)] rounded p-1 text-sm">
-                  <option>Most Recent</option>
-                  <option>Alphabetical</option>
-                </select>
-              </div>
-            </div>
-
-            {sectionSaveError && (
-              <div className="mb-3 text-sm text-rose-400">{sectionSaveError}</div>
-            )}
-
-            {isEditingCurrentTab ? (
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="text-sm text-text-muted">{comboDrafts.length} combos</div>
-                  <button
-                    type="button"
-                    onClick={() => setComboDrafts((prev) => prev.concat({ line: '', fuse: 'Freestyle', sort_order: prev.length, name: '', ranking: null, assist: null }))}
-                    className="px-3 py-1 rounded bg-[var(--color-accent-primary)] text-white text-sm"
-                  >
-                    + Combo
-                  </button>
-                </div>
-
-                <div className="space-y-3">
-                  {comboDrafts.map((combo, idx) => (
-                    <div key={`draft-${idx}`} className="p-3 bg-[rgba(255,255,255,0.02)] rounded border border-[rgba(255,255,255,0.05)]">
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                        <input
-                          className="w-full p-2 rounded bg-[transparent] border border-[rgba(255,255,255,0.06)] text-sm"
-                          value={combo.name || ''}
-                          onChange={(e) => setComboDrafts((prev) => prev.map((row, i) => (i === idx ? { ...row, name: e.target.value } : row)))}
-                          placeholder="Title (optional)"
-                        />
-                        <select
-                          className="w-full p-2 rounded bg-[transparent] border border-[rgba(255,255,255,0.06)] text-sm"
-                          value={combo.fuse || 'Freestyle'}
-                          onChange={(e) => setComboDrafts((prev) => prev.map((row, i) => (i === idx ? { ...row, fuse: e.target.value } : row)))}
-                        >
-                          {['2x Assist', 'Double Down', 'Freestyle', 'Juggernaut', 'Sidekick'].map((fuse) => (
-                            <option key={fuse} value={fuse}>{fuse}</option>
-                          ))}
-                        </select>
-                        <input
-                          type="number"
-                          className="w-full p-2 rounded bg-[transparent] border border-[rgba(255,255,255,0.06)] text-sm"
-                          value={combo.ranking != null ? combo.ranking : ''}
-                          onChange={(e) => {
-                            const val = e.target.value === '' ? null : parseInt(e.target.value, 10)
-                            setComboDrafts((prev) => prev.map((row, i) => (i === idx ? { ...row, ranking: Number.isNaN(val) ? null : val } : row)))
-                          }}
-                          placeholder="Rank"
-                        />
-                      </div>
-
-                      <textarea
-                        rows={3}
-                        className="w-full mt-3 p-2 rounded bg-[transparent] border border-[rgba(255,255,255,0.06)] text-sm"
-                        value={combo.line || ''}
-                        onChange={(e) => setComboDrafts((prev) => prev.map((row, i) => (i === idx ? { ...row, line: e.target.value } : row)))}
-                        placeholder="Combo string"
-                      />
-
-                      <div className="mt-3 flex items-center justify-between gap-3">
-                        <select
-                          className="w-full max-w-[320px] p-2 rounded bg-[transparent] border border-[rgba(255,255,255,0.06)] text-sm"
-                          value={combo.assist || ''}
-                          onChange={(e) => setComboDrafts((prev) => prev.map((row, i) => (i === idx ? { ...row, assist: e.target.value || null } : row)))}
-                        >
-                          <option value="">— none —</option>
-                          {champions
-                            .filter((ch) => !(activeChampion && activeChampion.id && String(ch.id) === String(activeChampion.id)))
-                            .map((ch) => (
-                              <option key={ch.id} value={String(ch.id)}>{ch.name}</option>
-                            ))}
-                        </select>
-
-                        <button
-                          type="button"
-                          onClick={() => setComboDrafts((prev) => prev.filter((_, i) => i !== idx))}
-                          className="px-3 py-1 rounded bg-[rgba(255,0,0,0.14)] text-rose-300 border border-[rgba(255,0,0,0.25)] text-sm"
-                        >
-                          Delete
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ) : (
-
-            <div className="space-y-3">
-              {(() => {
-                const list = getChampionCombosList()
-                const selectedAssist = selection && selection.assist ? String(selection.assist) : ''
-                const visibleList = getVisibleCombos(list)
-
-                if (visibleList.length === 0) {
-                  return (
-                    <div className="p-3 text-text-muted flex items-center justify-between">
-                      <div>{selectedAssist ? 'No combos available for this main + assist selection.' : 'No combos available for this champion.'}</div>
-                      <button className="px-3 py-1 rounded bg-[var(--color-accent-primary)] text-white" onClick={() => {
-                        beginInlineEdit()
-                        setComboDrafts([{ line: '', fuse: 'Freestyle', sort_order: 0, name: '', ranking: null, assist: null }])
-                      }}>Add combo</button>
-                    </div>
-                  )
-                }
-
-                return visibleList.map((c, i) => {
-                  const line = typeof c === 'string' ? c : (c && c.line ? c.line : '')
-                  const fuse = c && (c.fuse || c.fuse_type) ? (c.fuse || c.fuse_type) : null
-                  const comboName = c && (c.name || c.title) ? (c.name || c.title) : null
-                  const ranking = c && (c.rating || c.rank) ? (c.rating || c.rank) : null
-                  const assistRaw = c && (c.assist || c.assist_name) ? (c.assist || c.assist_name) : null
-
-                  // resolve assist id to champion name if possible
-                  let assistName = null
-                  if (assistRaw) {
-                    const found = champions && champions.find(ch => ch.id === String(assistRaw) || ch.code === String(assistRaw) || ch.name === String(assistRaw))
-                    assistName = found ? found.name : assistRaw
-                  }
-
-                  return (
-                    <div key={i} className="p-3 bg-[rgba(255,255,255,0.02)] rounded">
-                      <div className="flex items-start justify-between mb-2">
-                        <div className="text-sm font-semibold">{comboName || `Combo ${i+1}`}</div>
-                        <div className="flex items-center gap-2">
-                          {ranking !== null && (
-                            <div className="text-xs px-2 py-0.5 rounded bg-[rgba(255,255,255,0.03)]">Rank {ranking}</div>
-                          )}
-                          {fuse && (
-                            <div className="text-sm font-semibold px-3 py-1 rounded bg-[rgba(255,255,255,0.04)] text-yellow-300">{fuse}</div>
-                          )}
-                        </div>
-                      </div>
-
-                      <div className="mb-2 text-xs text-text-muted flex items-center gap-4">
-                        <div><strong>Main:</strong> {activeChampion ? (activeChampion.name || getChampionName(selection.main)) : getChampionName(selection.main)}</div>
-                        <div><strong>Assist:</strong> {assistName || '—'}</div>
-                      </div>
-
-                      <ComboVisual line={line} />
-                    </div>
-                  )
-                })
-              })()}
-            </div>
-            )}
-          </div>
-        ) : (
-          <div className="h-[60vh] flex items-center justify-center card">
-            <div className="text-center p-8">
-              <div className="mb-6">
-                <div className="w-40 h-40 rounded-full mx-auto bg-[rgba(255,255,255,0.02)] flex items-center justify-center text-3xl text-text-muted">⭘</div>
-              </div>
-              <h2 className="text-2xl font-semibold mb-2">No combos yet</h2>
-              <p className="text-text-muted mb-4">Select a main character to view combos or create a new combo.</p>
-              <div className="flex items-center justify-center">
-                <button className="btn btn-primary">Create Combo</button>
-              </div>
-            </div>
-          </div>
-        )
+        <CombosTab
+          selection={selection}
+          scrollableCardClass={scrollableCardClass}
+          activeChampion={activeChampion}
+          getChampionName={getChampionName}
+          sectionSaveError={sectionSaveError}
+          isEditing={isEditingCurrentTab}
+          comboDrafts={comboDrafts}
+          setComboDrafts={setComboDrafts}
+          champions={champions}
+          getChampionCombosList={getChampionCombosList}
+          getVisibleCombos={getVisibleCombos}
+          beginInlineEdit={beginInlineEdit}
+        />
       )}
 
       {activeTab === 'Abilities' && (
-        <div className={scrollableCardClass}>
-          <h2 className="text-2xl font-semibold mb-2">Abilities</h2>
-          {sectionSaveError && <div className="mb-3 text-sm text-rose-400">{sectionSaveError}</div>}
-          {isEditingCurrentTab
-            ? <RichTextEditor value={sectionDraft} onChange={setSectionDraft} placeholder="Ability notes" minHeight={420} />
-            : renderRichSection(activeChampion && activeChampion.metadata ? activeChampion.metadata.abilities : '', 'No ability notes.')}
-        </div>
+        <AbilitiesTab
+          scrollableCardClass={scrollableCardClass}
+          sectionSaveError={sectionSaveError}
+          isEditing={isEditingCurrentTab}
+          sectionDraft={sectionDraft}
+          setSectionDraft={setSectionDraft}
+          renderRichSection={renderRichSection}
+          activeChampion={activeChampion}
+        />
       )}
 
       {activeTab === 'Strategy' && (
-        <div className={scrollableCardClass}>
-          <h2 className="text-2xl font-semibold mb-2">Strategy</h2>
-          {sectionSaveError && <div className="mb-3 text-sm text-rose-400">{sectionSaveError}</div>}
-          {isEditingCurrentTab
-            ? <RichTextEditor value={sectionDraft} onChange={setSectionDraft} placeholder="Strategy notes" minHeight={420} />
-            : renderRichSection(activeChampion ? activeChampion.strategy : '', 'No strategy notes.')}
-        </div>
+        <StrategyTab
+          scrollableCardClass={scrollableCardClass}
+          sectionSaveError={sectionSaveError}
+          isEditing={isEditingCurrentTab}
+          sectionDraft={sectionDraft}
+          setSectionDraft={setSectionDraft}
+          renderRichSection={renderRichSection}
+          activeChampion={activeChampion}
+        />
       )}
 
       {activeTab === 'Teams' && (
-        <div className={scrollableCardClass}>
-          <h2 className="text-2xl font-semibold mb-2">Teams</h2>
-          {sectionSaveError && <div className="mb-3 text-sm text-rose-400">{sectionSaveError}</div>}
-          {isEditingCurrentTab
-            ? <RichTextEditor value={sectionDraft} onChange={setSectionDraft} placeholder="Teams / presets" minHeight={420} />
-            : renderRichSection(activeChampion && activeChampion.metadata ? activeChampion.metadata.teams : '', 'No team notes.')}
-        </div>
+        <TeamsTab
+          scrollableCardClass={scrollableCardClass}
+          sectionSaveError={sectionSaveError}
+          isEditing={isEditingCurrentTab}
+          sectionDraft={sectionDraft}
+          setSectionDraft={setSectionDraft}
+          renderRichSection={renderRichSection}
+          activeChampion={activeChampion}
+        />
       )}
 
       {activeTab === 'Matchups' && (
-        <div className={scrollableCardClass}>
-          <h2 className="text-2xl font-semibold mb-2">Matchups</h2>
-          {sectionSaveError && <div className="mb-3 text-sm text-rose-400">{sectionSaveError}</div>}
-          {isEditingCurrentTab
-            ? <RichTextEditor value={sectionDraft} onChange={setSectionDraft} placeholder="Matchups" minHeight={420} />
-            : renderRichSection(activeChampion && activeChampion.metadata ? activeChampion.metadata.matchups : '', 'No matchup notes.')}
-        </div>
+        <MatchupsTab
+          scrollableCardClass={scrollableCardClass}
+          sectionSaveError={sectionSaveError}
+          isEditing={isEditingCurrentTab}
+          sectionDraft={sectionDraft}
+          setSectionDraft={setSectionDraft}
+          renderRichSection={renderRichSection}
+          activeChampion={activeChampion}
+        />
       )}
 
       {activeTab === 'Notes' && (
-        <NotesWorkspace
+        <NotesTab
           activeChampion={activeChampion}
-          championCode={selection && selection.main ? selection.main : ''}
-          onChampionUpdated={setActiveChampion}
+          selection={selection}
+          setActiveChampion={setActiveChampion}
         />
       )}
     </main>
