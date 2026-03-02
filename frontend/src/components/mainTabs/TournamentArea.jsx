@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react'
-import { Trash2 } from 'lucide-react'
+import { Trash2, Edit2 } from 'lucide-react'
 import getTauriModule from '../../utils/tauri'
 import TournamentWizardModal from './TournamentWizardModal'
 import { useAppToast } from '../AppToastProvider'
@@ -27,6 +27,7 @@ export default function TournamentArea() {
   const [isLoading, setIsLoading] = useState(false)
   const [filterMode, setFilterMode] = useState('all')
   const [isWizardOpen, setIsWizardOpen] = useState(false)
+  const [editingTournament, setEditingTournament] = useState(null)
   const [activeView, setActiveView] = useState('dashboard')
   const [selectedTournamentId, setSelectedTournamentId] = useState('')
   const [deletingTournamentId, setDeletingTournamentId] = useState('')
@@ -277,7 +278,7 @@ export default function TournamentArea() {
               <div className="text-sm text-text-muted">{isLoading ? 'Loading…' : `${filteredTournaments.length} entries`}</div>
             </div>
 
-            <div className="grid grid-cols-1 xl:grid-cols-[1fr_1fr] gap-4">
+            <div className="grid grid-cols-1 xl:grid-cols-[0.7fr_1fr] gap-4">
               <div className="space-y-2 max-h-[650px] overflow-y-auto pr-1">
                 {filteredTournaments.length === 0 ? (
                   <div className="text-text-muted py-8 text-center border border-[rgba(255,255,255,0.06)] rounded">No tournaments yet.</div>
@@ -297,12 +298,12 @@ export default function TournamentArea() {
                       >
                         <div className="flex items-start justify-between gap-3">
                           <div className="min-w-0">
-                            <div className="text-3xl font-semibold truncate">{tournament.title || `Tournament ${idx + 1}`}</div>
+                            <div className="text-xl font-semibold truncate">{tournament.title || `Tournament ${idx + 1}`}</div>
                             <div className="text-sm text-[var(--color-accent-primary)] truncate">{tournament.sponsor || 'Unknown sponsor'}</div>
                           </div>
                           <div className="text-right shrink-0">
                             <div className="text-text-muted text-sm">{formatDate(tournament.happened_on)}</div>
-                            <div className={`text-4xl font-semibold ${localWins >= localLosses ? 'text-[var(--color-accent-success)]' : 'text-rose-400'}`}>{`${localWins}-${localLosses}`}</div>
+                            <div className={`text-2xl font-semibold ${localWins >= localLosses ? 'text-[var(--color-accent-success)]' : 'text-rose-400'}`}>{`${localWins}-${localLosses}`}</div>
                           </div>
                         </div>
                       </button>
@@ -322,16 +323,28 @@ export default function TournamentArea() {
                           <h3 className="text-2xl font-semibold truncate">{selectedTournament.title || 'Untitled Tournament'}</h3>
                           <div className="text-sm text-text-muted mt-1">{formatDate(selectedTournament.happened_on)} · {selectedTournament.mode || '—'} · {selectedTournament.sponsor || 'Unknown sponsor'}</div>
                         </div>
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteTournament(selectedTournament.id)}
-                          disabled={deletingTournamentId === String(selectedTournament.id)}
-                          className="w-8 h-8 rounded border border-[rgba(226,76,75,0.5)] text-rose-300 hover:bg-[rgba(226,76,75,0.16)] disabled:opacity-60"
-                          title="Delete Tournament"
-                          aria-label="Delete Tournament"
-                        >
-                          <Trash2 size={14} className="mx-auto" />
-                        </button>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => { setEditingTournament(selectedTournament); setIsWizardOpen(true) }}
+                            className="w-8 h-8 rounded border border-[rgba(255,255,255,0.06)] text-text-muted hover:bg-[rgba(255,255,255,0.03)]"
+                            title="Edit Tournament"
+                            aria-label="Edit Tournament"
+                          >
+                            <Edit2 size={14} className="mx-auto" />
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteTournament(selectedTournament.id)}
+                            disabled={deletingTournamentId === String(selectedTournament.id)}
+                            className="w-8 h-8 rounded border border-[rgba(226,76,75,0.5)] text-rose-300 hover:bg-[rgba(226,76,75,0.16)] disabled:opacity-60"
+                            title="Delete Tournament"
+                            aria-label="Delete Tournament"
+                          >
+                            <Trash2 size={14} className="mx-auto" />
+                          </button>
+                        </div>
                       </div>
                     </div>
 
@@ -438,6 +451,11 @@ export default function TournamentArea() {
                       const matches = Array.isArray(tournament && tournament.matches) ? tournament.matches : []
                       const localWins = matches.filter((m) => String(m && m.result ? m.result : '').toLowerCase() === 'win').length
                       const localLosses = matches.filter((m) => String(m && m.result ? m.result : '').toLowerCase() === 'loss').length
+                      const mainMatch = matches && matches.length > 0 ? matches[0] : null
+                      const mainChampionId = mainMatch && mainMatch.our_main_champion && mainMatch.our_main_champion.id ? String(mainMatch.our_main_champion.id) : (mainMatch && mainMatch.our_main_champion_id ? String(mainMatch.our_main_champion_id) : null)
+                      const mainChampionName = mainMatch && mainMatch.our_main_champion && mainMatch.our_main_champion.name ? mainMatch.our_main_champion.name : (mainChampionId ? (champions.find(c => String(c.id) === mainChampionId) || {}).name : null)
+                      const thumbUrl = mainChampionId ? championImages[String(mainChampionId)] : null
+
                       return (
                         <button
                           key={tournament.id || idx}
@@ -450,10 +468,12 @@ export default function TournamentArea() {
                           className="w-full text-left flex items-center justify-between gap-3 rounded border border-[rgba(255,255,255,0.05)] px-3 py-2 hover:bg-[rgba(255,255,255,0.03)]"
                           title="Open tournament details"
                         >
-                          <div className="min-w-0">
+                          <div className="flex items-center gap-3 min-w-0">
+                            <div className="min-w-0">
                               <div className="text-base font-semibold truncate">{tournament.title || `Tournament ${idx + 1}`}</div>
                               <div className="text-xs text-text-muted">{formatDate(tournament.happened_on)}</div>
                             </div>
+                          </div>
                           <div className={`text-sm font-semibold shrink-0 ${localWins >= localLosses ? 'text-[var(--color-accent-success)]' : 'text-rose-400'}`}>
                             {`${localWins}-${localLosses}`}
                           </div>
@@ -549,10 +569,12 @@ export default function TournamentArea() {
       <TournamentWizardModal
         open={isWizardOpen}
         champions={champions}
-        onClose={() => setIsWizardOpen(false)}
+        onClose={() => { setIsWizardOpen(false); setEditingTournament(null) }}
         onSaved={async () => {
           await loadTournaments()
+          setEditingTournament(null)
         }}
+        tournament={editingTournament}
       />
     </main>
   )

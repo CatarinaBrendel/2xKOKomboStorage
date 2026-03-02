@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react'
+import React, { useMemo, useState, useEffect } from 'react'
 import getTauriModule from '../../utils/tauri'
 import { useAppConfirm } from '../AppConfirmProvider'
 import { Trash2 } from 'lucide-react'
@@ -38,15 +38,26 @@ export default function TournamentWizardModal({
   onClose,
   onSaved,
   champions = [],
+  tournament = null,
 }) {
+  // Respect the `open` prop: don't render modal when closed.
+  if (!open) return null
   const [step, setStep] = useState(1)
   const [isSaving, setIsSaving] = useState(false)
   const [errorText, setErrorText] = useState('')
   const [tournamentDraft, setTournamentDraft] = useState(emptyTournament())
   const [matchDraft, setMatchDraft] = useState(emptyMatch())
   const [matches, setMatches] = useState([])
+  const [deletedMatchIds, setDeletedMatchIds] = useState([])
+  const [showMatchEditor, setShowMatchEditor] = useState(false)
+  const [editingMatchIndex, setEditingMatchIndex] = useState(null)
   const { confirm } = useAppConfirm()
   const totalSteps = 3
+
+  const availableAssistChampions = useMemo(() => {
+    const currentMain = String(matchDraft.our_main_champion_id || '')
+    return champions.filter((ch) => String(ch.id) !== currentMain)
+  }, [champions, matchDraft.our_main_champion_id])
 
   async function handleDeleteMatch(index) {
     try {
@@ -60,18 +71,17 @@ export default function TournamentWizardModal({
 
       if (!ok) return
 
-      setMatches((prev) => prev.filter((_, i) => i !== index))
+      setMatches((prev) => {
+        const toRemove = prev[index]
+        if (toRemove && toRemove.id) {
+          setDeletedMatchIds((d) => d.concat(String(toRemove.id)))
+        }
+        return prev.filter((_, i) => i !== index)
+      })
     } catch (e) {
       // ignore
     }
   }
-
-  const availableAssistChampions = useMemo(() => {
-    const currentMain = String(matchDraft.our_main_champion_id || '')
-    return champions.filter((ch) => String(ch.id) !== currentMain)
-  }, [champions, matchDraft.our_main_champion_id])
-
-  if (!open) return null
 
   function resetAndClose() {
     setStep(1)
@@ -79,8 +89,64 @@ export default function TournamentWizardModal({
     setTournamentDraft(emptyTournament())
     setMatchDraft(emptyMatch())
     setMatches([])
+    setDeletedMatchIds([])
+    setShowMatchEditor(false)
+    setEditingMatchIndex(null)
     onClose()
   }
+
+  // initialize when editing an existing tournament (run whenever `tournament` changes)
+  useEffect(() => {
+    if (!tournament) return
+    try {
+      function normalizeDateForInput(d) {
+        if (!d) return ''
+        try {
+          const dt = new Date(d)
+          if (Number.isNaN(dt.getTime())) return String(d)
+          const yyyy = dt.getFullYear()
+          const mm = String(dt.getMonth() + 1).padStart(2, '0')
+          const dd = String(dt.getDate()).padStart(2, '0')
+          return `${yyyy}-${mm}-${dd}`
+        } catch (e) {
+          return String(d)
+        }
+      }
+
+      setTournamentDraft({
+        title: tournament.title || '',
+        happened_on: normalizeDateForInput(tournament.happened_on) || '',
+        sponsor: tournament.sponsor || '',
+        mode: tournament.mode || 'offline',
+        final_placement: tournament.final_placement || '',
+        notes: tournament.notes || '',
+      })
+
+      const mapped = Array.isArray(tournament.matches) ? tournament.matches.map((m) => ({
+        id: m && m.id ? String(m.id) : undefined,
+        our_main_champion_id: String(m && (m.our_main_champion_id || (m.our_main_champion && m.our_main_champion.id) || '')),
+        our_assist_champion_id: String(m && (m.our_assist_champion_id || (m.our_assist_champion && m.our_assist_champion.id) || '')),
+        result: m && m.result ? m.result : 'win',
+        opponent_name: m && m.opponent_name ? String(m.opponent_name) : '',
+        opponent_main_champion_id: String(m && (m.opponent_main_champion_id || (m.opponent_main_champion && m.opponent_main_champion.id) || '')),
+        opponent_assist_champion_id: String(m && (m.opponent_assist_champion_id || (m.opponent_assist_champion && m.opponent_assist_champion.id) || '')),
+        notes: m && m.notes ? String(m.notes) : '',
+        played_at: m && m.played_at ? String(m.played_at) : '',
+      })) : []
+
+      // eslint-disable-next-line no-console
+      console.debug('TournamentWizardModal.init tournament:', tournament)
+      // eslint-disable-next-line no-console
+      console.debug('TournamentWizardModal.mapped matches:', mapped)
+
+      setMatches(mapped)
+      setDeletedMatchIds([])
+      setStep(1)
+      setErrorText('')
+    } catch (e) {
+      // ignore
+    }
+  }, [tournament])
 
   function validateStep1() {
     if (!String(tournamentDraft.title || '').trim()) {
@@ -102,6 +168,40 @@ export default function TournamentWizardModal({
     return true
   }
 
+  function startEditMatch(index) {
+    const m = matches[index]
+    setMatchDraft(m || emptyMatch())
+    setEditingMatchIndex(index)
+    setShowMatchEditor(true)
+    setErrorText('')
+    setStep(2)
+  }
+
+  function cancelMatchEdit() {
+    setMatchDraft(emptyMatch())
+    setEditingMatchIndex(null)
+    setShowMatchEditor(false)
+    setErrorText('')
+  }
+
+  function saveMatch() {
+    if (!validateStep2()) return false
+    if (editingMatchIndex !== null && editingMatchIndex !== undefined) {
+      setMatches((prev) => {
+        const copy = prev.slice()
+        copy[editingMatchIndex] = { ...matchDraft }
+        return copy
+      })
+    } else {
+      setMatches((prev) => prev.concat({ ...matchDraft }))
+    }
+    setMatchDraft(emptyMatch())
+    setEditingMatchIndex(null)
+    setShowMatchEditor(false)
+    setErrorText('')
+    return true
+  }
+
   function addCurrentMatchAndGoSummary() {
     if (!validateStep2()) return
     setMatches((prev) => prev.concat({ ...matchDraft }))
@@ -111,6 +211,12 @@ export default function TournamentWizardModal({
   }
 
   function handleBackFromSummary() {
+    // In edit mode we don't want to remove the last match when going back.
+    if (tournament) {
+      setStep(2)
+      return
+    }
+
     if (matches.length === 0) {
       setStep(2)
       return
@@ -148,35 +254,83 @@ export default function TournamentWizardModal({
         notes: tournamentDraft.notes.trim() || null,
       }
 
-      const createdTournament = await tauri.invoke('create_tournament', {
-        tournamentJson: JSON.stringify(tournamentPayload),
-      })
+      // If editing an existing tournament, update it and update/add/delete matches
+      if (tournament && tournament.id) {
+        const tournamentId = String(tournament.id)
+        await tauri.invoke('update_tournament', { tournamentId, tournamentJson: JSON.stringify(tournamentPayload) })
 
-      const tournamentId = createdTournament && createdTournament.id ? String(createdTournament.id) : ''
-      if (!tournamentId) throw new Error('Tournament creation returned no id')
-
-      for (let i = 0; i < matches.length; i += 1) {
-        const m = matches[i]
-        const matchPayload = {
-          our_main_champion_id: m.our_main_champion_id,
-          our_assist_champion_id: m.our_assist_champion_id || null,
-          result: m.result,
-          opponent_name: String(m.opponent_name || '').trim(),
-          opponent_main_champion_id: m.opponent_main_champion_id || null,
-          opponent_assist_champion_id: m.opponent_assist_champion_id || null,
-          notes: String(m.notes || '').trim() || null,
-          played_at: m.played_at || tournamentDraft.happened_on || null,
-          sort_order: i,
+        // delete removed matches
+        for (let j = 0; j < deletedMatchIds.length; j += 1) {
+          const mid = String(deletedMatchIds[j])
+          if (!mid) continue
+          try {
+            // best-effort
+            // eslint-disable-next-line no-await-in-loop
+            await tauri.invoke('delete_tournament_match', { matchId: mid })
+          } catch (e) {
+            // ignore
+          }
         }
 
-        await tauri.invoke('add_tournament_match', {
-          tournamentId,
-          matchJson: JSON.stringify(matchPayload),
-        })
-      }
+        // update or add matches
+        for (let i = 0; i < matches.length; i += 1) {
+          const m = matches[i]
+          const matchPayload = {
+            our_main_champion_id: m.our_main_champion_id,
+            our_assist_champion_id: m.our_assist_champion_id || null,
+            result: m.result,
+            opponent_name: String(m.opponent_name || '').trim(),
+            opponent_main_champion_id: m.opponent_main_champion_id || null,
+            opponent_assist_champion_id: m.opponent_assist_champion_id || null,
+            notes: String(m.notes || '').trim() || null,
+            played_at: m.played_at || tournamentDraft.happened_on || null,
+            sort_order: i,
+          }
 
-      if (onSaved) await onSaved()
-      resetAndClose()
+          if (m && m.id) {
+            const matchId = String(m.id)
+            // eslint-disable-next-line no-await-in-loop
+            await tauri.invoke('update_tournament_match', { matchId, matchJson: JSON.stringify(matchPayload) })
+          } else {
+            // eslint-disable-next-line no-await-in-loop
+            await tauri.invoke('add_tournament_match', { tournamentId, matchJson: JSON.stringify(matchPayload) })
+          }
+        }
+
+        if (onSaved) await onSaved()
+        resetAndClose()
+      } else {
+        const createdTournament = await tauri.invoke('create_tournament', {
+          tournamentJson: JSON.stringify(tournamentPayload),
+        })
+
+        const tournamentId = createdTournament && createdTournament.id ? String(createdTournament.id) : ''
+        if (!tournamentId) throw new Error('Tournament creation returned no id')
+
+        for (let i = 0; i < matches.length; i += 1) {
+          const m = matches[i]
+          const matchPayload = {
+            our_main_champion_id: m.our_main_champion_id,
+            our_assist_champion_id: m.our_assist_champion_id || null,
+            result: m.result,
+            opponent_name: String(m.opponent_name || '').trim(),
+            opponent_main_champion_id: m.opponent_main_champion_id || null,
+            opponent_assist_champion_id: m.opponent_assist_champion_id || null,
+            notes: String(m.notes || '').trim() || null,
+            played_at: m.played_at || tournamentDraft.happened_on || null,
+            sort_order: i,
+          }
+
+          // eslint-disable-next-line no-await-in-loop
+          await tauri.invoke('add_tournament_match', {
+            tournamentId,
+            matchJson: JSON.stringify(matchPayload),
+          })
+        }
+
+        if (onSaved) await onSaved()
+        resetAndClose()
+      }
     } catch (e) {
       console.error('save tournament wizard failed', e)
       setErrorText('Could not save tournament. Please try again.')
@@ -191,7 +345,7 @@ export default function TournamentWizardModal({
 
       <div className="relative z-10 w-[720px] max-w-[94vw] max-h-[88vh] rounded border border-[var(--color-bg-border)] bg-[var(--color-bg-panel)] p-4 overflow-y-auto">
         <div className="flex items-center justify-between border-b border-[rgba(255,255,255,0.08)] pb-2 mb-3">
-          <h3 className="text-2xl font-semibold">{step === 1 ? 'New Tournament' : step === 2 ? 'Add Match Details' : 'Summary & Save'}</h3>
+          <h3 className="text-2xl font-semibold">{tournament ? (step === 1 ? 'Edit Tournament' : step === 2 ? 'Edit Match Details' : 'Summary & Save') : (step === 1 ? 'New Tournament' : step === 2 ? 'Add Match Details' : 'Summary & Save')}</h3>
           <button
             type="button"
             onClick={() => { if (!isSaving) resetAndClose() }}
@@ -276,101 +430,148 @@ export default function TournamentWizardModal({
         {step === 2 && (
           <div className="space-y-2.5">
             <div>
-              <label className="block text-sm text-text-muted mb-1">Main Champion</label>
-              <select
-                className="w-full h-10 px-3 rounded bg-[transparent] border border-[rgba(255,255,255,0.08)]"
-                value={matchDraft.our_main_champion_id}
-                onChange={(e) => setMatchDraft((prev) => ({ ...prev, our_main_champion_id: e.target.value, our_assist_champion_id: prev.our_assist_champion_id === e.target.value ? '' : prev.our_assist_champion_id }))}
-              >
-                <option value="">Select main champion</option>
-                {champions.map((ch) => (
-                  <option key={ch.id} value={String(ch.id)}>{ch.name}</option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-sm text-text-muted mb-1">Assist</label>
-              <select
-                className="w-full h-10 px-3 rounded bg-[transparent] border border-[rgba(255,255,255,0.08)]"
-                value={matchDraft.our_assist_champion_id}
-                onChange={(e) => setMatchDraft((prev) => ({ ...prev, our_assist_champion_id: e.target.value }))}
-              >
-                <option value="">Optional</option>
-                {availableAssistChampions.map((ch) => (
-                  <option key={ch.id} value={String(ch.id)}>{ch.name}</option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-sm text-text-muted mb-1">Match Result</label>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setMatchDraft((prev) => ({ ...prev, result: 'win' }))}
-                  className={`px-4 py-2 rounded border ${matchDraft.result === 'win' ? 'bg-[rgba(34,197,94,0.2)] border-[rgba(34,197,94,0.45)] text-emerald-200' : 'border-[rgba(255,255,255,0.12)] text-text-muted'}`}
-                >
-                  Win
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setMatchDraft((prev) => ({ ...prev, result: 'loss' }))}
-                  className={`px-4 py-2 rounded border ${matchDraft.result === 'loss' ? 'bg-[rgba(226,76,75,0.2)] border-[rgba(226,76,75,0.45)] text-rose-300' : 'border-[rgba(255,255,255,0.12)] text-text-muted'}`}
-                >
-                  Loss
-                </button>
+              <div className="flex items-center justify-between mb-2">
+                <div className="text-sm text-text-muted">Matches</div>
+                <div>
+                  <button
+                    type="button"
+                    onClick={() => { setMatchDraft(emptyMatch()); setEditingMatchIndex(null); setShowMatchEditor(true); setErrorText('') }}
+                    className="px-3 py-1 rounded bg-[rgba(255,255,255,0.03)] text-sm"
+                  >
+                    + Add Match
+                  </button>
+                </div>
               </div>
-            </div>
 
-            <div>
-              <label className="block text-sm text-text-muted mb-1">Opponent Name</label>
-              <input
-                className="w-full px-3 py-2 rounded bg-[transparent] border border-[rgba(255,255,255,0.08)]"
-                value={matchDraft.opponent_name}
-                onChange={(e) => setMatchDraft((prev) => ({ ...prev, opponent_name: e.target.value }))}
-                placeholder="Enter opponent name"
-              />
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <div>
-                <label className="block text-sm text-text-muted mb-1">Opponent Main Champion</label>
-                <select
-                  className="w-full h-10 px-3 rounded bg-[transparent] border border-[rgba(255,255,255,0.08)]"
-                  value={matchDraft.opponent_main_champion_id}
-                  onChange={(e) => setMatchDraft((prev) => ({ ...prev, opponent_main_champion_id: e.target.value }))}
-                >
-                  <option value="">Optional</option>
-                  {champions.map((ch) => (
-                    <option key={ch.id} value={String(ch.id)}>{ch.name}</option>
-                  ))}
-                </select>
+              <div className="space-y-2 max-h-[280px] overflow-y-auto pr-1 mb-3">
+                {matches.length === 0 ? (
+                  <div className="text-sm text-text-muted">No matches added yet.</div>
+                ) : (
+                  matches.map((m, idx) => (
+                    <div key={`${idx}-${m.our_main_champion_id}-${m.opponent_name}`} className="rounded border border-[rgba(255,255,255,0.08)] bg-[rgba(255,255,255,0.02)] p-3 flex items-center justify-between">
+                      <div className="text-sm">
+                        <span className="font-semibold">{championNameById(champions, m.our_main_champion_id)}</span>
+                        {m.our_assist_champion_id ? ` + ${championNameById(champions, m.our_assist_champion_id)}` : ''}
+                        <span className="text-text-muted"> vs </span>
+                        <span className="font-semibold">{m.opponent_name}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button type="button" onClick={() => startEditMatch(idx)} className="px-2 py-1 rounded bg-[rgba(255,255,255,0.03)] text-sm">Edit</button>
+                        <button type="button" onClick={async () => { if (!isSaving) await handleDeleteMatch(idx) }} className="px-2 py-1 rounded bg-[rgba(255,255,255,0.03)] text-sm text-rose-400">Delete</button>
+                      </div>
+                    </div>
+                  ))
+                )}
               </div>
-              <div>
-                <label className="block text-sm text-text-muted mb-1">Opponent Assist Champion</label>
-                <select
-                  className="w-full h-10 px-3 rounded bg-[transparent] border border-[rgba(255,255,255,0.08)]"
-                  value={matchDraft.opponent_assist_champion_id}
-                  onChange={(e) => setMatchDraft((prev) => ({ ...prev, opponent_assist_champion_id: e.target.value }))}
-                >
-                  <option value="">Optional</option>
-                  {champions.map((ch) => (
-                    <option key={ch.id} value={String(ch.id)}>{ch.name}</option>
-                  ))}
-                </select>
-              </div>
-            </div>
 
-            <div>
-              <label className="block text-sm text-text-muted mb-1">Match Notes</label>
-              <textarea
-                rows={4}
-                className="w-full px-3 py-2 rounded bg-[transparent] border border-[rgba(255,255,255,0.08)]"
-                value={matchDraft.notes}
-                onChange={(e) => setMatchDraft((prev) => ({ ...prev, notes: e.target.value }))}
-                placeholder="Optional"
-              />
+              {showMatchEditor && (
+                <div className="rounded border border-[rgba(255,255,255,0.08)] bg-[rgba(255,255,255,0.02)] p-3">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-2">
+                    <div>
+                      <label className="block text-sm text-text-muted mb-1">Main Champion</label>
+                      <select
+                        className="w-full h-10 px-3 rounded bg-[transparent] border border-[rgba(255,255,255,0.08)]"
+                        value={matchDraft.our_main_champion_id}
+                        onChange={(e) => setMatchDraft((prev) => ({ ...prev, our_main_champion_id: e.target.value, our_assist_champion_id: prev.our_assist_champion_id === e.target.value ? '' : prev.our_assist_champion_id }))}
+                      >
+                        <option value="">Select main champion</option>
+                        {champions.map((ch) => (
+                          <option key={ch.id} value={String(ch.id)}>{ch.name}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm text-text-muted mb-1">Assist</label>
+                      <select
+                        className="w-full h-10 px-3 rounded bg-[transparent] border border-[rgba(255,255,255,0.08)]"
+                        value={matchDraft.our_assist_champion_id}
+                        onChange={(e) => setMatchDraft((prev) => ({ ...prev, our_assist_champion_id: e.target.value }))}
+                      >
+                        <option value="">Optional</option>
+                        {availableAssistChampions.map((ch) => (
+                          <option key={ch.id} value={String(ch.id)}>{ch.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="mb-2">
+                    <label className="block text-sm text-text-muted mb-1">Match Result</label>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setMatchDraft((prev) => ({ ...prev, result: 'win' }))}
+                        className={`px-4 py-2 rounded border ${matchDraft.result === 'win' ? 'bg-[rgba(34,197,94,0.2)] border-[rgba(34,197,94,0.45)] text-emerald-200' : 'border-[rgba(255,255,255,0.12)] text-text-muted'}`}
+                      >
+                        Win
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setMatchDraft((prev) => ({ ...prev, result: 'loss' }))}
+                        className={`px-4 py-2 rounded border ${matchDraft.result === 'loss' ? 'bg-[rgba(226,76,75,0.2)] border-[rgba(226,76,75,0.45)] text-rose-300' : 'border-[rgba(255,255,255,0.12)] text-text-muted'}`}
+                      >
+                        Loss
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="mb-2">
+                    <label className="block text-sm text-text-muted mb-1">Opponent Name</label>
+                    <input
+                      className="w-full px-3 py-2 rounded bg-[transparent] border border-[rgba(255,255,255,0.08)]"
+                      value={matchDraft.opponent_name}
+                      onChange={(e) => setMatchDraft((prev) => ({ ...prev, opponent_name: e.target.value }))}
+                      placeholder="Enter opponent name"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-2">
+                    <div>
+                      <label className="block text-sm text-text-muted mb-1">Opponent Main Champion</label>
+                      <select
+                        className="w-full h-10 px-3 rounded bg-[transparent] border border-[rgba(255,255,255,0.08)]"
+                        value={matchDraft.opponent_main_champion_id}
+                        onChange={(e) => setMatchDraft((prev) => ({ ...prev, opponent_main_champion_id: e.target.value }))}
+                      >
+                        <option value="">Optional</option>
+                        {champions.map((ch) => (
+                          <option key={ch.id} value={String(ch.id)}>{ch.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm text-text-muted mb-1">Opponent Assist Champion</label>
+                      <select
+                        className="w-full h-10 px-3 rounded bg-[transparent] border border-[rgba(255,255,255,0.08)]"
+                        value={matchDraft.opponent_assist_champion_id}
+                        onChange={(e) => setMatchDraft((prev) => ({ ...prev, opponent_assist_champion_id: e.target.value }))}
+                      >
+                        <option value="">Optional</option>
+                        {champions.map((ch) => (
+                          <option key={ch.id} value={String(ch.id)}>{ch.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="mb-2">
+                    <label className="block text-sm text-text-muted mb-1">Match Notes</label>
+                    <textarea
+                      rows={4}
+                      className="w-full px-3 py-2 rounded bg-[transparent] border border-[rgba(255,255,255,0.08)]"
+                      value={matchDraft.notes}
+                      onChange={(e) => setMatchDraft((prev) => ({ ...prev, notes: e.target.value }))}
+                      placeholder="Optional"
+                    />
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <button type="button" onClick={() => { saveMatch() }} className="px-4 py-1 rounded bg-[var(--color-accent-primary)] text-white">Save Match</button>
+                    <button type="button" onClick={cancelMatchEdit} className="px-4 py-1 rounded bg-[rgba(255,255,255,0.03)]">Cancel</button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -452,7 +653,18 @@ export default function TournamentWizardModal({
                   }
 
                   if (step === 2) {
-                    addCurrentMatchAndGoSummary()
+                    // Unified behavior for Create & Edit:
+                    // If inline editor open, save it and stay on matches list.
+                    if (showMatchEditor) {
+                      saveMatch()
+                      return
+                    }
+                    // Otherwise ensure at least one match and go to summary.
+                    if (matches.length === 0) {
+                      setErrorText('Add at least one match before saving.')
+                      return
+                    }
+                    setStep(3)
                   }
                 }}
                 disabled={isSaving}
@@ -467,6 +679,7 @@ export default function TournamentWizardModal({
                   onClick={() => {
                     setErrorText('')
                     setMatchDraft(emptyMatch())
+                    setShowMatchEditor(true)
                     setStep(2)
                   }}
                   disabled={isSaving}
@@ -480,7 +693,7 @@ export default function TournamentWizardModal({
                   disabled={isSaving}
                   className="px-5 py-1 rounded bg-[var(--color-accent-primary)] text-white disabled:opacity-60"
                 >
-                  {isSaving ? 'Saving…' : 'Save'}
+                  {isSaving ? 'Saving…' : (tournament ? 'Save Changes' : 'Save')}
                 </button>
               </>
             )}
