@@ -353,17 +353,55 @@ export default function Main({ selection, onEditChampion }){
                 const dbCombos = activeChampion && activeChampion.combos && Array.isArray(activeChampion.combos) ? activeChampion.combos : null
                 const metaCombos = activeChampion && activeChampion.metadata && activeChampion.metadata.combos ? (Array.isArray(activeChampion.metadata.combos) ? activeChampion.metadata.combos : String(activeChampion.metadata.combos).split('\n')) : null
                 const list = dbCombos || metaCombos || []
+                const selectedAssist = selection && selection.assist ? String(selection.assist) : ''
 
-                if (list.length === 0) {
+                const toNorm = (value) => String(value || '').trim().toLowerCase()
+                const resolveAssistCandidates = (value) => {
+                  if (!value) return []
+                  const raw = String(value).trim()
+                  if (!raw) return []
+
+                  const baseName = getChampionName(raw)
+                  const candidates = new Set([raw, baseName])
+
+                  const found = champions && champions.find((ch) => {
+                    const fields = [ch && ch.id, ch && ch.code, ch && ch.slug, ch && ch.name]
+                    return fields.some((field) => {
+                      const fieldNorm = toNorm(field)
+                      return fieldNorm && (fieldNorm === toNorm(raw) || fieldNorm === toNorm(baseName))
+                    })
+                  })
+
+                  if (found) {
+                    if (found.id) candidates.add(String(found.id))
+                    if (found.code) candidates.add(String(found.code))
+                    if (found.slug) candidates.add(String(found.slug))
+                    if (found.name) candidates.add(String(found.name))
+                  }
+
+                  return Array.from(candidates).map(toNorm).filter(Boolean)
+                }
+
+                const selectedAssistCandidates = selectedAssist ? resolveAssistCandidates(selectedAssist) : []
+                const visibleList = selectedAssist
+                  ? list.filter((c) => {
+                      const assistRaw = c && (c.assist || c.assist_name) ? (c.assist || c.assist_name) : null
+                      if (!assistRaw) return false
+                      const comboAssistCandidates = resolveAssistCandidates(assistRaw)
+                      return comboAssistCandidates.some((candidate) => selectedAssistCandidates.includes(candidate))
+                    })
+                  : list
+
+                if (visibleList.length === 0) {
                   return (
                     <div className="p-3 text-text-muted flex items-center justify-between">
-                      <div>No combos available for this champion.</div>
+                      <div>{selectedAssist ? 'No combos available for this main + assist selection.' : 'No combos available for this champion.'}</div>
                       <button className="px-3 py-1 rounded bg-[var(--color-accent-primary)] text-white" onClick={() => { if (onEditChampion) onEditChampion(selection.main) }}>Add combo</button>
                     </div>
                   )
                 }
 
-                return list.map((c, i) => {
+                return visibleList.map((c, i) => {
                   const line = typeof c === 'string' ? c : (c && c.line ? c.line : '')
                   const fuse = c && (c.fuse || c.fuse_type) ? (c.fuse || c.fuse_type) : null
                   const comboName = c && (c.name || c.title) ? (c.name || c.title) : null

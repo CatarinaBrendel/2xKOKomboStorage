@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import DOMPurify from 'dompurify'
+import { Pencil, Trash2 } from 'lucide-react'
 import getTauriModule from '../utils/tauri'
 import RichTextEditor from './RichTextEditor'
 
@@ -394,8 +395,8 @@ export default function NotesWorkspace({ activeChampion, championCode, onChampio
   }
 
   return (
-    <div className="card max-h-[calc(100vh-180px)] overflow-hidden p-0">
-      <div className="flex min-h-[560px]">
+    <div className="card max-h-[calc(100vh-120px)] overflow-hidden p-0">
+      <div className="flex min-h-[650px]">
         <aside className="w-[260px] border-r border-[rgba(255,255,255,0.06)] bg-[rgba(255,255,255,0.01)]">
           <div className="px-4 py-4 flex items-center justify-between">
             <p className="font-semibold">Notes</p>
@@ -467,7 +468,7 @@ export default function NotesWorkspace({ activeChampion, championCode, onChampio
               {isEditing ? (
                 <>
                   <input
-                    className="w-full bg-transparent text-4xl font-semibold outline-none"
+                    className="w-full bg-transparent text-3xl font-semibold outline-none"
                     value={selectedNote ? (selectedNote.title || '') : ''}
                     onChange={(e) => {
                       const val = e.target.value
@@ -480,14 +481,14 @@ export default function NotesWorkspace({ activeChampion, championCode, onChampio
                 </>
               ) : (
                 <>
-                  <h2 className="text-3xl font-semibold">
+                  <h2 className="text-2xl font-semibold">
                     {selectedNote ? deriveNoteTitle(selectedNote, 0) : 'Untitled note'}
                   </h2>
                 </>
               )}
             </div>
 
-            <div className="flex items-center gap-2 justify-self-end">
+            <div className="flex items-center gap-1.5 justify-self-end">
               <button
                 type="button"
                 onClick={() => {
@@ -495,63 +496,43 @@ export default function NotesWorkspace({ activeChampion, championCode, onChampio
                   deleteNoteById(selectedNote.id)
                 }}
                 disabled={!selectedNote}
-                className="px-3 py-1 rounded bg-[rgba(255,0,0,0.14)] text-rose-300 border border-[rgba(255,0,0,0.25)] disabled:opacity-50"
+                className="px-2 py-1.5 rounded bg-[rgba(255,0,0,0.14)] text-rose-300 border border-[rgba(255,0,0,0.25)] disabled:opacity-50"
+                title="Delete note"
+                aria-label="Delete note"
               >
-                Delete
+                <Trash2 size={12} />
               </button>
-              <button
-                type="button"
-                onClick={createNote}
-                className="px-3 py-1 rounded bg-[rgba(255,255,255,0.03)]"
-              >
-                + Note
-              </button>
+
               {isEditing ? (
                 <button
                   type="button"
-                  onClick={() => {
-                    setIsEditing(false)
-                    if (activeChampion && Array.isArray(activeChampion.notes)) {
-                      const mapped = activeChampion.notes.map((note, idx) => ({
-                        id: note.id || `existing-${idx}`,
-                        title: note.title || '',
-                        content: note.content || '',
-                        tag_ids: Array.isArray(note.tag_ids)
-                          ? note.tag_ids.map((id) => String(id))
-                          : (note.tag_id ? [String(note.tag_id)] : []),
-                        tags: Array.isArray(note.tags) ? note.tags : [],
-                        sort_order: typeof note.sort_order === 'number' ? note.sort_order : idx,
-                        updated_at: note.updated_at || null,
-                      }))
-                      setNoteDrafts(mapped)
-                      if (selectedNote) {
-                        const keep = mapped.find((n) => n.id === selectedNote.id)
-                        setSelectedNoteId(keep ? keep.id : (mapped[0] ? mapped[0].id : null))
-                      }
-                    }
-                  }}
-                  className="px-3 py-1 rounded bg-[rgba(255,255,255,0.03)]"
+                  onClick={saveChampionNotes}
+                  disabled={isSavingNotes || !activeChampion || !activeChampion.id}
+                  className="px-3 py-1 rounded bg-[var(--color-accent-primary)] text-white disabled:opacity-60 text-sm"
                 >
-                  Cancel
+                  {isSavingNotes ? 'Saving…' : 'Save'}
                 </button>
               ) : (
-                <button
-                  type="button"
-                  onClick={() => { if (selectedNote) setIsEditing(true) }}
-                  disabled={!selectedNote}
-                  className="px-3 py-1 rounded bg-[rgba(255,255,255,0.03)] disabled:opacity-50"
-                >
-                  Edit
-                </button>
+                <>
+                  <button
+                    type="button"
+                    onClick={createNote}
+                    className="px-2.5 py-1 rounded bg-[rgba(255,255,255,0.03)] text-sm"
+                  >
+                    + Note
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { if (selectedNote) setIsEditing(true) }}
+                    disabled={!selectedNote}
+                    className="px-2 py-1.5 rounded bg-[rgba(255,255,255,0.03)] disabled:opacity-50"
+                    title="Edit note"
+                    aria-label="Edit note"
+                  >
+                    <Pencil size={12} />
+                  </button>
+                </>
               )}
-              <button
-                type="button"
-                onClick={saveChampionNotes}
-                disabled={isSavingNotes || !activeChampion || !activeChampion.id || !isEditing}
-                className="px-4 py-1 rounded bg-[var(--color-accent-primary)] text-white disabled:opacity-60"
-              >
-                {isSavingNotes ? 'Saving…' : 'Save'}
-              </button>
             </div>
 
             <div className="col-span-2">
@@ -560,23 +541,19 @@ export default function NotesWorkspace({ activeChampion, championCode, onChampio
                   <div ref={tagPickerRef} className="relative w-full">
                     <div className="flex items-center rounded bg-[transparent] border border-[rgba(255,255,255,0.08)] min-h-[40px]">
                       <div className="flex-1 flex flex-wrap items-center gap-1 px-2 py-1">
-                        {selectedTags.length > 0 ? (
-                          selectedTags.map((tag) => (
-                            <div key={tag.id} className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-[rgba(34,197,94,0.18)] text-emerald-200 border border-[rgba(34,197,94,0.25)] text-xs">
-                              <span>{tag.name}</span>
-                              <button
-                                type="button"
-                                className="text-emerald-100/80 hover:text-emerald-100"
-                                onClick={() => removeTagFromSelected(tag.id)}
-                                title="Remove tag"
-                              >
-                                ✕
-                              </button>
-                            </div>
-                          ))
-                        ) : (
-                          <span className="text-emerald-200/60 text-xs px-1">General</span>
-                        )}
+                        {selectedTags.map((tag) => (
+                          <div key={tag.id} className="inline-flex items-center gap-1 px-1 py-[1px] rounded-full bg-[rgba(34,197,94,0.18)] text-emerald-200 border border-[rgba(34,197,94,0.25)] text-[8px]">
+                            <span>{tag.name}</span>
+                            <button
+                              type="button"
+                              className="text-emerald-100/80 hover:text-emerald-100"
+                              onClick={() => removeTagFromSelected(tag.id)}
+                              title="Remove tag"
+                            >
+                              ✕
+                            </button>
+                          </div>
+                        ))}
 
                         <input
                           className="flex-1 min-w-[140px] px-1 py-1 bg-transparent text-sm outline-none"
@@ -632,15 +609,11 @@ export default function NotesWorkspace({ activeChampion, championCode, onChampio
                 </div>
               ) : (
                 <div className="flex flex-wrap items-center gap-2">
-                  {selectedTags.length > 0 ? (
-                    selectedTags.map((tag) => (
-                      <span key={tag.id} className="px-2 py-1 rounded bg-[rgba(34,197,94,0.18)] text-emerald-200 border border-[rgba(34,197,94,0.25)] text-sm">
-                        {tag.name}
-                      </span>
-                    ))
-                  ) : (
-                    <span className="px-2 py-1 rounded bg-[rgba(34,197,94,0.10)] text-emerald-200/70 border border-[rgba(34,197,94,0.18)] text-sm">General</span>
-                  )}
+                  {selectedTags.map((tag) => (
+                    <span key={tag.id} className="px-1.5 py-0.5 rounded-full bg-[rgba(34,197,94,0.18)] text-emerald-200 border border-[rgba(34,197,94,0.25)] text-[10px]">
+                      {tag.name}
+                    </span>
+                  ))}
                 </div>
               )}
             </div>
