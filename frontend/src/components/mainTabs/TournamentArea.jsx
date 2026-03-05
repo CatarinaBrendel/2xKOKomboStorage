@@ -82,6 +82,17 @@ export default function TournamentArea() {
     }
   }
 
+  // ensure images are loaded whenever the champions list updates
+  useEffect(() => {
+    try {
+      if (Array.isArray(champions) && champions.length > 0) {
+        loadChampionImages(champions)
+      }
+    } catch (e) {
+      // ignore
+    }
+  }, [champions])
+
   useEffect(() => {
     let mounted = true
 

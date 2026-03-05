@@ -1,9 +1,14 @@
-import React from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
+import getTauriModule from '../../utils/tauri'
 import ComboVisual from '../ComboVisual'
 
-function FilterPill({ children, active }) {
+function FilterPill({ children, active, onClick }) {
   return (
-    <button className={`px-3 py-1 rounded-full text-sm ${active ? 'bg-[var(--color-accent-primary)] text-white' : 'bg-[rgba(255,255,255,0.03)] text-text-muted'}`}>
+    <button
+      type="button"
+      onClick={onClick}
+      className={`px-3 py-1 rounded-full text-sm ${active ? 'bg-[var(--color-accent-primary)] text-white' : 'bg-[rgba(255,255,255,0.03)] text-text-muted'}`}
+    >
       {children}
     </button>
   )
@@ -23,6 +28,62 @@ export default function CombosTab({
   getVisibleCombos,
   beginInlineEdit,
 }) {
+  const [selectedTag, setSelectedTag] = useState('')
+
+  const [topTags, setTopTags] = useState([])
+
+  useEffect(() => {
+    let mounted = true
+    async function loadTopTags() {
+      try {
+        const tauri = await getTauriModule()
+        if (!tauri) {
+          // running in plain browser (vite) — derive top tags from local combos
+          try {
+            const list = getChampionCombosList() || []
+            const counts = {}
+            const displayMap = {}
+            list.forEach((cmb) => {
+              if (!cmb) return
+              const rawTags = Array.isArray(cmb.tags) ? cmb.tags : (cmb.tags ? String(cmb.tags).split(',') : [])
+              rawTags.forEach((t) => {
+                const tagRaw = String(t || '').trim()
+                if (!tagRaw) return
+                const key = tagRaw.toLowerCase()
+                counts[key] = (counts[key] || 0) + 1
+                if (!displayMap[key]) displayMap[key] = tagRaw
+              })
+            })
+            const derived = Object.keys(counts)
+              .map((k) => ({ name: displayMap[k] || k, slug: k, id: null, count: counts[k] }))
+              .sort((a, b) => b.count - a.count)
+              .slice(0, 5)
+            if (mounted) {
+              console.debug('CombosTab: derived topTags (browser)', derived)
+              setTopTags(derived)
+            }
+          } catch (e) {
+            console.debug('CombosTab: derive topTags failed', e)
+          }
+          return
+        }
+
+        const res = await tauri.invoke('list_top_combo_tags')
+        if (!mounted) return
+        if (Array.isArray(res)) {
+          console.debug('CombosTab: loaded topTags (tauri)', res)
+          setTopTags(res)
+        } else {
+          console.debug('CombosTab: list_top_combo_tags returned', res)
+        }
+      } catch (e) {
+        console.debug('list_top_combo_tags failed', e)
+      }
+    }
+
+    loadTopTags()
+    return () => { mounted = false }
+  }, [])
   return (
     <div className={scrollableCardClass}>
       <h2 className="text-xl font-semibold mb-2">Combos for {activeChampion ? activeChampion.name : getChampionName(selection.main)}</h2>
@@ -34,11 +95,28 @@ export default function CombosTab({
 
       <div className="mb-4 flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <FilterPill active>Combo</FilterPill>
-          <FilterPill>Blockstring</FilterPill>
-          <FilterPill>Setup</FilterPill>
-          <FilterPill>Beginner</FilterPill>
-          <FilterPill>Advanced</FilterPill>
+          {topTags && topTags.length > 0 && (
+            <div className="flex items-center gap-2 ml-3">
+              {topTags.map((t) => {
+                const key = (t && (t.slug || (t.id ? String(t.id) : null) || t.name)) || JSON.stringify(t)
+                const label = (t && (t.name || t.slug)) || key
+                const normKey = String((t && (t.slug || t.name)) || '').toLowerCase()
+                return (
+                  <FilterPill
+                    key={key}
+                    active={selectedTag && String(selectedTag).toLowerCase() === normKey}
+                    onClick={() => {
+                      const next = (selectedTag && String(selectedTag).toLowerCase() === normKey) ? '' : (t.slug || t.name || key)
+                      console.debug('CombosTab: tag pill clicked', { clicked: key, selectedBefore: selectedTag, selectedAfter: next })
+                      setSelectedTag(next)
+                    }}
+                  >
+                    {label}
+                  </FilterPill>
+                )
+              })}
+            </div>
+          )}
         </div>
         <div className="flex items-center gap-3 text-text-muted">
           <span>Sort by:</span>
@@ -136,7 +214,17 @@ export default function CombosTab({
           {(() => {
             const list = getChampionCombosList()
             const selectedAssist = selection && selection.assist ? String(selection.assist) : ''
-            const visibleList = getVisibleCombos(list)
+            let visibleList = getVisibleCombos(list)
+            if (selectedTag) {
+              visibleList = visibleList.filter((combo) => {
+                if (!combo) return false
+                const rawTags = Array.isArray(combo.tags) ? combo.tags : (combo.tags ? String(combo.tags).split(',') : [])
+                return rawTags
+                  .map((x) => String(x || '').trim())
+                  .filter(Boolean)
+                  .some((x) => String(x).toLowerCase() === String(selectedTag).toLowerCase())
+              })
+            }
 
             if (visibleList.length === 0) {
               return (

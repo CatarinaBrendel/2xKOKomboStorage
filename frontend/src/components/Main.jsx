@@ -12,6 +12,7 @@ import TeamsTab from './mainTabs/TeamsTab'
 import MatchupsTab from './mainTabs/MatchupsTab'
 import NotesTab from './mainTabs/NotesTab'
 import TournamentArea from './mainTabs/TournamentArea'
+import TrainingArea from './mainTabs/TrainingArea'
 
 function getChampionName(filename) {
   if (!filename) return ''
@@ -505,6 +506,10 @@ export default function Main({ selection, mainArea = 'champions', onSelectionCha
 
   if (mainArea === 'tournament') {
     return <TournamentArea />
+  }
+
+  if (mainArea === 'training') {
+    return <TrainingArea />
   }
 
   if (!selection || !selection.main) {

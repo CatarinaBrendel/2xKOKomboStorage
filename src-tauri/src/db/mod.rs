@@ -46,6 +46,11 @@ pub fn set_combos(champion_id: String, combos_json: String) -> Result<String, St
 }
 
 #[tauri::command]
+pub fn list_top_combo_tags() -> Result<serde_json::Value, String> {
+  combos::list_top_combo_tags()
+}
+
+#[tauri::command]
 pub fn set_champion_notes(champion_id: String, notes_json: String) -> Result<String, String> {
   notes::set_champion_notes(champion_id, notes_json)
 }
@@ -113,6 +118,11 @@ pub fn delete_tournament_match(match_id: String) -> Result<String, String> {
 #[tauri::command]
 pub fn list_tournament_matches(tournament_id: String) -> Result<serde_json::Value, String> {
   tournaments::list_tournament_matches(tournament_id)
+}
+
+#[tauri::command]
+pub fn list_training_matches() -> Result<serde_json::Value, String> {
+  tournaments::list_training_matches()
 }
 
 #[tauri::command]

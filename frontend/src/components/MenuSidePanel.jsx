@@ -438,6 +438,16 @@ export default function MenuSidePanel({ selection: propSelection, onSelectionCha
             Tournaments
           </button>
         </div>
+        <div className="mb-2">
+          <button
+            type="button"
+            onClick={() => { if (onMainAreaChange) onMainAreaChange('training') }}
+            className={`w-full text-left px-0 py-0.5 text-xl font-bold border-l-2 transition-colors ${mainArea === 'training' ? 'text-white border-[var(--color-accent-primary)] pl-2' : 'text-text-muted border-transparent hover:text-white/90 pl-2'}`}
+            title="Open Training"
+          >
+            Training
+          </button>
+        </div>
         <div className="mb-2 flex items-center justify-between">
           <h2 className={`text-xl font-bold border-l-2 pl-2 py-0.5 ${mainArea === 'champions' ? 'text-white border-[var(--color-accent-primary)]' : 'text-text-muted border-transparent'}`}>
             Champions

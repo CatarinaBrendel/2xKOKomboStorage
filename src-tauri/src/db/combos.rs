@@ -1,7 +1,8 @@
-use rusqlite::Connection;
+use rusqlite::{Connection, OptionalExtension};
 use uuid::Uuid;
 
 use super::common::default_db_path;
+use serde_json::json;
 
 pub fn set_combos(champion_id: String, combos_json: String) -> Result<String, String> {
   let db_path = default_db_path().map_err(|e| format!("db path error: {}", e))?;
@@ -106,4 +107,57 @@ pub fn set_combos(champion_id: String, combos_json: String) -> Result<String, St
   }
 
   Ok("ok".to_string())
+}
+
+pub fn list_top_combo_tags() -> Result<serde_json::Value, String> {
+  let db_path = default_db_path().map_err(|e| format!("db path error: {}", e))?;
+  let conn = Connection::open(&db_path).map_err(|e| format!("db open error: {}", e))?;
+
+  // First attempt: aggregate from combo_tags join (canonical many-to-many table)
+  let mut out: Vec<serde_json::Value> = Vec::new();
+  if let Ok(mut stmt) = conn.prepare(
+    "SELECT t.id, t.name, t.slug, COUNT(*) as cnt FROM combo_tags ct JOIN tags t ON t.id = ct.tag_id GROUP BY t.id ORDER BY cnt DESC LIMIT 5",
+  ) {
+    if let Ok(mapped) = stmt.query_map([], |r| {
+      Ok(json!({
+        "id": r.get::<_, i64>(0)?.to_string(),
+        "name": r.get::<_, String>(1)?,
+        "slug": r.get::<_, String>(2)?,
+        "count": r.get::<_, i64>(3)?,
+      }))
+    }) {
+      for row in mapped {
+        if let Ok(v) = row { out.push(v) }
+      }
+    }
+  }
+
+  // If we found results via combo_tags, return them
+  if !out.is_empty() {
+    return Ok(json!(out));
+  }
+
+  // Fallback: aggregate from champion_combos.tags JSON column (if present)
+  // Uses json_each to expand arrays; join to tags table by slug when possible.
+  let fallback_sql = "SELECT t.id, t.name, t.slug, s.cnt FROM (SELECT lower(json_each.value) as slug, COUNT(*) as cnt FROM champion_combos, json_each(champion_combos.tags) WHERE champion_combos.tags IS NOT NULL GROUP BY lower(json_each.value) ORDER BY cnt DESC LIMIT 5) s LEFT JOIN tags t ON lower(t.slug) = s.slug";
+  if let Ok(mut stmt2) = conn.prepare(fallback_sql) {
+    if let Ok(mapped2) = stmt2.query_map([], |r| {
+      let id_opt: Option<i64> = r.get(0).optional().ok().flatten();
+      let name_opt: Option<String> = r.get(1).optional().ok().flatten();
+      let slug_opt: Option<String> = r.get(2).optional().ok().flatten();
+      let cnt: i64 = r.get(3)?;
+      Ok(json!({
+        "id": id_opt.map(|i: i64| i.to_string()),
+        "name": name_opt,
+        "slug": slug_opt,
+        "count": cnt,
+      }))
+    }) {
+      for row in mapped2 {
+        if let Ok(v) = row { out.push(v) }
+      }
+    }
+  }
+
+  Ok(json!(out))
 }

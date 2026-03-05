@@ -40,8 +40,8 @@ export default function TournamentWizardModal({
   champions = [],
   tournament = null,
 }) {
-  // Respect the `open` prop: don't render modal when closed.
-  if (!open) return null
+  // Note: keep hooks unconditionally called even if modal closed.
+  // We'll early-return below after hooks are created.
   const [step, setStep] = useState(1)
   const [isSaving, setIsSaving] = useState(false)
   const [errorText, setErrorText] = useState('')
@@ -147,6 +147,9 @@ export default function TournamentWizardModal({
       // ignore
     }
   }, [tournament])
+
+  // Respect the `open` prop: don't render modal when closed.
+  if (!open) return null
 
   function validateStep1() {
     if (!String(tournamentDraft.title || '').trim()) {

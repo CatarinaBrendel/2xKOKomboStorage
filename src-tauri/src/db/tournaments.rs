@@ -30,31 +30,76 @@ fn ensure_tournament_tables(conn: &Connection) -> Result<(), String> {
          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
        );
 
-       CREATE TABLE IF NOT EXISTS tournament_matches (
+       CREATE TABLE IF NOT EXISTS tournament_runs (
          id INTEGER PRIMARY KEY AUTOINCREMENT,
          tournament_id INTEGER NOT NULL REFERENCES tournaments(id) ON DELETE CASCADE,
-         our_main_champion_id INTEGER NOT NULL REFERENCES champions(id) ON DELETE RESTRICT,
-         our_assist_champion_id INTEGER DEFAULT NULL REFERENCES champions(id) ON DELETE SET NULL,
-         result TEXT NOT NULL CHECK (result IN ('win', 'loss')),
-         opponent_name TEXT NOT NULL,
-         opponent_main_champion_id INTEGER DEFAULT NULL REFERENCES champions(id) ON DELETE SET NULL,
-         opponent_assist_champion_id INTEGER DEFAULT NULL REFERENCES champions(id) ON DELETE SET NULL,
+         label TEXT DEFAULT NULL,
+         sort_order INTEGER NOT NULL DEFAULT 0,
          notes TEXT DEFAULT NULL,
-         played_at DATE DEFAULT NULL,
-         sort_order INTEGER DEFAULT 0,
          created_at DATETIME DEFAULT CURRENT_TIMESTAMP
        );
 
-       CREATE INDEX IF NOT EXISTS idx_tournament_matches_tournament_id
-         ON tournament_matches(tournament_id);
-       CREATE INDEX IF NOT EXISTS idx_tournament_matches_our_main
-         ON tournament_matches(our_main_champion_id);
-       CREATE INDEX IF NOT EXISTS idx_tournament_matches_our_assist
-         ON tournament_matches(our_assist_champion_id);
-       CREATE INDEX IF NOT EXISTS idx_tournament_matches_opp_main
-         ON tournament_matches(opponent_main_champion_id);
-       CREATE INDEX IF NOT EXISTS idx_tournament_matches_opp_assist
-         ON tournament_matches(opponent_assist_champion_id);
+       CREATE INDEX IF NOT EXISTS idx_tournament_runs_tournament
+         ON tournament_runs(tournament_id);
+
+       CREATE TABLE IF NOT EXISTS training_sessions (
+         id INTEGER PRIMARY KEY AUTOINCREMENT,
+         happened_on DATE NOT NULL,
+         mode TEXT NOT NULL DEFAULT 'offline' CHECK (mode IN ('online','offline')),
+         notes TEXT DEFAULT NULL,
+         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+       );
+
+       CREATE TABLE IF NOT EXISTS match_groups (
+         id INTEGER PRIMARY KEY AUTOINCREMENT,
+         training_session_id INTEGER NOT NULL REFERENCES training_sessions(id) ON DELETE CASCADE,
+         kind TEXT NOT NULL CHECK (kind IN ('ranked','casual')),
+         sort_order INTEGER NOT NULL DEFAULT 0,
+         notes TEXT DEFAULT NULL,
+         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+       );
+
+       CREATE INDEX IF NOT EXISTS idx_match_groups_session
+         ON match_groups(training_session_id);
+
+       CREATE TABLE IF NOT EXISTS matches (
+         id INTEGER PRIMARY KEY AUTOINCREMENT,
+         match_group_id INTEGER DEFAULT NULL REFERENCES match_groups(id) ON DELETE CASCADE,
+         tournament_run_id INTEGER DEFAULT NULL REFERENCES tournament_runs(id) ON DELETE CASCADE,
+         our_main_champion_id INTEGER NOT NULL REFERENCES champions(id) ON DELETE RESTRICT,
+         our_assist_champion_id INTEGER DEFAULT NULL REFERENCES champions(id) ON DELETE SET NULL,
+         opponent_name TEXT NOT NULL,
+         opponent_main_champion_id INTEGER DEFAULT NULL REFERENCES champions(id) ON DELETE SET NULL,
+         opponent_assist_champion_id INTEGER DEFAULT NULL REFERENCES champions(id) ON DELETE SET NULL,
+         result TEXT DEFAULT NULL CHECK (result IN ('win','loss')),
+         played_at DATE DEFAULT NULL,
+         sort_order INTEGER NOT NULL DEFAULT 0,
+         notes TEXT DEFAULT NULL,
+         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+         CHECK (
+           (match_group_id IS NOT NULL AND tournament_run_id IS NULL)
+           OR
+           (match_group_id IS NULL AND tournament_run_id IS NOT NULL)
+         )
+       );
+
+       CREATE INDEX IF NOT EXISTS idx_matches_group
+         ON matches(match_group_id);
+       CREATE INDEX IF NOT EXISTS idx_matches_tournament_run
+         ON matches(tournament_run_id);
+
+       CREATE TABLE IF NOT EXISTS match_sets (
+         id INTEGER PRIMARY KEY AUTOINCREMENT,
+         match_id INTEGER NOT NULL REFERENCES matches(id) ON DELETE CASCADE,
+         set_number INTEGER NOT NULL,
+         result TEXT NOT NULL CHECK (result IN ('win','loss')),
+         notes TEXT DEFAULT NULL,
+         UNIQUE(match_id, set_number)
+       );
+
+       CREATE INDEX IF NOT EXISTS idx_match_sets_match
+         ON match_sets(match_id);
       ",
     )
     .map_err(|e| format!("failed to ensure tournament tables: {}", e))
@@ -76,18 +121,18 @@ fn list_tournament_matches_for_conn(conn: &Connection, tournament_id: i64) -> Re
   let mut stmt = conn
     .prepare(
       "SELECT
-         tm.id,
-         tm.tournament_id,
-         tm.our_main_champion_id,
-         tm.our_assist_champion_id,
-         tm.result,
-         tm.opponent_name,
-         tm.opponent_main_champion_id,
-         tm.opponent_assist_champion_id,
-         tm.notes,
-         tm.played_at,
-         tm.sort_order,
-         tm.created_at,
+         m.id,
+         tr.tournament_id,
+         m.our_main_champion_id,
+         m.our_assist_champion_id,
+         m.result,
+         m.opponent_name,
+         m.opponent_main_champion_id,
+         m.opponent_assist_champion_id,
+         m.notes,
+         m.played_at,
+         m.sort_order,
+         m.created_at,
          om.name,
          om.code,
          oa.name,
@@ -95,14 +140,16 @@ fn list_tournament_matches_for_conn(conn: &Connection, tournament_id: i64) -> Re
          xm.name,
          xm.code,
          xa.name,
-         xa.code
-       FROM tournament_matches tm
-       LEFT JOIN champions om ON om.id = tm.our_main_champion_id
-       LEFT JOIN champions oa ON oa.id = tm.our_assist_champion_id
-       LEFT JOIN champions xm ON xm.id = tm.opponent_main_champion_id
-       LEFT JOIN champions xa ON xa.id = tm.opponent_assist_champion_id
-       WHERE tm.tournament_id = ?1
-       ORDER BY tm.sort_order, tm.created_at",
+         xa.code,
+         tr.id
+       FROM matches m
+       JOIN tournament_runs tr ON tr.id = m.tournament_run_id
+       LEFT JOIN champions om ON om.id = m.our_main_champion_id
+       LEFT JOIN champions oa ON oa.id = m.our_assist_champion_id
+       LEFT JOIN champions xm ON xm.id = m.opponent_main_champion_id
+       LEFT JOIN champions xa ON xa.id = m.opponent_assist_champion_id
+       WHERE tr.tournament_id = ?1
+       ORDER BY m.sort_order, m.created_at",
     )
     .map_err(|e| format!("db prepare error: {}", e))?;
 
@@ -112,8 +159,8 @@ fn list_tournament_matches_for_conn(conn: &Connection, tournament_id: i64) -> Re
       let t_id = r.get::<_, i64>(1)?;
       let our_main_id = r.get::<_, i64>(2)?;
       let our_assist_id = r.get::<_, Option<i64>>(3)?;
-      let result = r.get::<_, String>(4)?;
-      let opponent_name = r.get::<_, String>(5)?;
+      let result = r.get::<_, Option<String>>(4)?;
+      let opponent_name = r.get::<_, Option<String>>(5)?;
       let opp_main_id = r.get::<_, Option<i64>>(6)?;
       let opp_assist_id = r.get::<_, Option<i64>>(7)?;
       let notes = r.get::<_, Option<String>>(8)?;
@@ -129,10 +176,12 @@ fn list_tournament_matches_for_conn(conn: &Connection, tournament_id: i64) -> Re
       let opp_main_code = r.get::<_, Option<String>>(17)?;
       let opp_assist_name = r.get::<_, Option<String>>(18)?;
       let opp_assist_code = r.get::<_, Option<String>>(19)?;
+      let tournament_run_id = r.get::<_, i64>(20)?;
 
       Ok(json!({
         "id": id.to_string(),
         "tournament_id": t_id.to_string(),
+        "tournament_run_id": tournament_run_id.to_string(),
         "our_main_champion_id": our_main_id.to_string(),
         "our_assist_champion_id": our_assist_id.map(|v| v.to_string()),
         "result": result,
@@ -407,9 +456,30 @@ pub fn add_tournament_match(tournament_id: String, match_json: String) -> Result
 
   let sort_order = parse_optional_i64(parsed.get("sort_order")).unwrap_or(0);
 
+  // ensure there is a tournament_run to attach this match to; prefer a default run (NULL label)
+  let mut run_stmt = conn
+    .prepare("SELECT id FROM tournament_runs WHERE tournament_id = ?1 AND label IS NULL LIMIT 1")
+    .map_err(|e| format!("db prepare error: {}", e))?;
+
+  let run_id_opt = run_stmt
+    .query_row(rusqlite::params![tournament_id_num], |r| r.get::<_, i64>(0))
+    .optional()
+    .map_err(|e| format!("db query error: {}", e))?;
+
+  let run_id = if let Some(id) = run_id_opt {
+    id
+  } else {
+    conn.execute(
+      "INSERT INTO tournament_runs (tournament_id, label, sort_order) VALUES (?1, NULL, 0)",
+      rusqlite::params![tournament_id_num],
+    )
+    .map_err(|e| format!("db insert error: {}", e))?;
+    conn.last_insert_rowid()
+  };
+
   conn.execute(
-    "INSERT INTO tournament_matches (
-       tournament_id,
+    "INSERT INTO matches (
+       tournament_run_id,
        our_main_champion_id,
        our_assist_champion_id,
        result,
@@ -421,7 +491,7 @@ pub fn add_tournament_match(tournament_id: String, match_json: String) -> Result
        sort_order
      ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
     rusqlite::params![
-      tournament_id_num,
+      run_id,
       our_main_champion_id,
       our_assist_champion_id,
       result,
@@ -486,7 +556,7 @@ pub fn update_tournament_match(match_id: String, match_json: String) -> Result<J
   let sort_order = parse_optional_i64(parsed.get("sort_order")).unwrap_or(0);
 
   conn.execute(
-    "UPDATE tournament_matches
+    "UPDATE matches
      SET our_main_champion_id = ?1,
          our_assist_champion_id = ?2,
          result = ?3,
@@ -525,7 +595,7 @@ pub fn delete_tournament_match(match_id: String) -> Result<String, String> {
     .map_err(|e| format!("invalid match id: {}", e))?;
 
   conn.execute(
-    "DELETE FROM tournament_matches WHERE id = ?1",
+    "DELETE FROM matches WHERE id = ?1",
     rusqlite::params![id_num],
   )
   .map_err(|e| format!("db delete error: {}", e))?;
@@ -545,6 +615,112 @@ pub fn list_tournament_matches(tournament_id: String) -> Result<JsonValue, Strin
   Ok(JsonValue::Array(list_tournament_matches_for_conn(&conn, id_num)?))
 }
 
+pub fn list_training_matches() -> Result<JsonValue, String> {
+  let db_path = default_db_path().map_err(|e| format!("db path error: {}", e))?;
+  let conn = Connection::open(&db_path).map_err(|e| format!("db open error: {}", e))?;
+  ensure_tournament_tables(&conn)?;
+
+  // training matches are those attached to a match_group
+  let mut stmt = conn
+    .prepare(
+      "SELECT
+        m.id,
+        mg.training_session_id,
+        m.our_main_champion_id,
+        m.our_assist_champion_id,
+        m.result,
+        m.opponent_name,
+        m.opponent_main_champion_id,
+        m.opponent_assist_champion_id,
+        m.notes,
+        m.played_at,
+        m.sort_order,
+        m.created_at,
+        om.name,
+        om.code,
+        oa.name,
+        oa.code,
+        xm.name,
+        xm.code,
+        xa.name,
+        xa.code,
+        mg.id,
+        mg.kind,
+        mg.notes as group_notes,
+        ts.happened_on as session_happened_on
+       FROM matches m
+       JOIN match_groups mg ON mg.id = m.match_group_id
+       LEFT JOIN training_sessions ts ON ts.id = mg.training_session_id
+       LEFT JOIN champions om ON om.id = m.our_main_champion_id
+       LEFT JOIN champions oa ON oa.id = m.our_assist_champion_id
+       LEFT JOIN champions xm ON xm.id = m.opponent_main_champion_id
+       LEFT JOIN champions xa ON xa.id = m.opponent_assist_champion_id
+       ORDER BY m.created_at, m.sort_order",
+    )
+    .map_err(|e| format!("db prepare error: {}", e))?;
+
+  let rows = stmt
+    .query_map([], |r| {
+      let id = r.get::<_, i64>(0)?;
+      let training_session_id = r.get::<_, i64>(1)?;
+      let our_main_id = r.get::<_, i64>(2)?;
+      let our_assist_id = r.get::<_, Option<i64>>(3)?;
+      let result = r.get::<_, Option<String>>(4)?;
+      let opponent_name = r.get::<_, Option<String>>(5)?;
+      let opp_main_id = r.get::<_, Option<i64>>(6)?;
+      let opp_assist_id = r.get::<_, Option<i64>>(7)?;
+      let notes = r.get::<_, Option<String>>(8)?;
+      let played_at = r.get::<_, Option<String>>(9)?;
+      let sort_order = r.get::<_, Option<i64>>(10)?;
+      let created_at = r.get::<_, Option<String>>(11)?;
+
+      let our_main_name = r.get::<_, Option<String>>(12)?;
+      let our_main_code = r.get::<_, Option<String>>(13)?;
+      let our_assist_name = r.get::<_, Option<String>>(14)?;
+      let our_assist_code = r.get::<_, Option<String>>(15)?;
+      let opp_main_name = r.get::<_, Option<String>>(16)?;
+      let opp_main_code = r.get::<_, Option<String>>(17)?;
+      let opp_assist_name = r.get::<_, Option<String>>(18)?;
+      let opp_assist_code = r.get::<_, Option<String>>(19)?;
+      let match_group_id = r.get::<_, i64>(20)?;
+      let group_kind = r.get::<_, Option<String>>(21)?;
+      let group_notes = r.get::<_, Option<String>>(22)?;
+      let session_happened_on = r.get::<_, Option<String>>(23)?;
+
+      Ok(json!({
+        "id": id.to_string(),
+        "training_session_id": training_session_id.to_string(),
+        "match_group_id": match_group_id.to_string(),
+        "group_kind": group_kind,
+        "group_notes": group_notes,
+        "session_happened_on": session_happened_on,
+        "our_main_champion_id": our_main_id.to_string(),
+        "our_assist_champion_id": our_assist_id.map(|v| v.to_string()),
+        "result": result,
+        "opponent_name": opponent_name,
+        "opponent_main_champion_id": opp_main_id.map(|v| v.to_string()),
+        "opponent_assist_champion_id": opp_assist_id.map(|v| v.to_string()),
+        "notes": notes,
+        "played_at": played_at,
+        "sort_order": sort_order,
+        "created_at": created_at,
+        "our_main_champion": champion_json(Some(our_main_id), our_main_name, our_main_code),
+        "our_assist_champion": champion_json(our_assist_id, our_assist_name, our_assist_code),
+        "opponent_main_champion": champion_json(opp_main_id, opp_main_name, opp_main_code),
+        "opponent_assist_champion": champion_json(opp_assist_id, opp_assist_name, opp_assist_code),
+      }))
+    })
+    .map_err(|e| format!("db query error: {}", e))?;
+
+  let mut out = Vec::new();
+  for row in rows {
+    if let Ok(v) = row {
+      out.push(v)
+    }
+  }
+  Ok(JsonValue::Array(out))
+}
+
 pub fn get_tournament_match(match_id: String) -> Result<JsonValue, String> {
   let db_path = default_db_path().map_err(|e| format!("db path error: {}", e))?;
   let conn = Connection::open(&db_path).map_err(|e| format!("db open error: {}", e))?;
@@ -554,19 +730,109 @@ pub fn get_tournament_match(match_id: String) -> Result<JsonValue, String> {
     .parse()
     .map_err(|e| format!("invalid match id: {}", e))?;
 
+  // try to resolve as a tournament match via tournament_runs
   let mut stmt = conn
-    .prepare("SELECT tournament_id FROM tournament_matches WHERE id = ?1 LIMIT 1")
+    .prepare(
+      "SELECT tr.tournament_id
+       FROM matches m
+       JOIN tournament_runs tr ON tr.id = m.tournament_run_id
+       WHERE m.id = ?1
+       LIMIT 1",
+    )
     .map_err(|e| format!("db prepare error: {}", e))?;
 
-  let tournament_id = stmt
+  let tournament_id_opt = stmt
     .query_row(rusqlite::params![id_num], |r| r.get::<_, i64>(0))
     .optional()
-    .map_err(|e| format!("db query error: {}", e))?
-    .ok_or_else(|| format!("match not found: {}", id_num))?;
+    .map_err(|e| format!("db query error: {}", e))?;
 
-  let matches = list_tournament_matches_for_conn(&conn, tournament_id)?;
-  matches
-    .into_iter()
-    .find(|m| m.get("id").and_then(|v| v.as_str()) == Some(&id_num.to_string()))
-    .ok_or_else(|| format!("match not found: {}", id_num))
+  if let Some(tournament_id) = tournament_id_opt {
+    let matches = list_tournament_matches_for_conn(&conn, tournament_id)?;
+    return matches
+      .into_iter()
+      .find(|m| m.get("id").and_then(|v| v.as_str()) == Some(&id_num.to_string()))
+      .ok_or_else(|| format!("match not found: {}", id_num));
+  }
+
+  // otherwise try to fetch as a training match directly
+  let mut stmt2 = conn
+    .prepare(
+      "SELECT
+         m.id,
+         m.match_group_id,
+         m.our_main_champion_id,
+         m.our_assist_champion_id,
+         m.result,
+         m.opponent_name,
+         m.opponent_main_champion_id,
+         m.opponent_assist_champion_id,
+         m.notes,
+         m.played_at,
+         m.sort_order,
+         m.created_at,
+         om.name,
+         om.code,
+         oa.name,
+         oa.code,
+         xm.name,
+         xm.code,
+         xa.name,
+         xa.code
+       FROM matches m
+       LEFT JOIN champions om ON om.id = m.our_main_champion_id
+       LEFT JOIN champions oa ON oa.id = m.our_assist_champion_id
+       LEFT JOIN champions xm ON xm.id = m.opponent_main_champion_id
+       LEFT JOIN champions xa ON xa.id = m.opponent_assist_champion_id
+       WHERE m.id = ?1 AND m.match_group_id IS NOT NULL
+       LIMIT 1",
+    )
+    .map_err(|e| format!("db prepare error: {}", e))?;
+
+  let maybe = stmt2
+    .query_row(rusqlite::params![id_num], |r| {
+      let id = r.get::<_, i64>(0)?;
+      let match_group_id = r.get::<_, i64>(1)?;
+      let our_main_id = r.get::<_, i64>(2)?;
+      let our_assist_id = r.get::<_, Option<i64>>(3)?;
+      let result = r.get::<_, Option<String>>(4)?;
+      let opponent_name = r.get::<_, Option<String>>(5)?;
+      let opp_main_id = r.get::<_, Option<i64>>(6)?;
+      let opp_assist_id = r.get::<_, Option<i64>>(7)?;
+      let notes = r.get::<_, Option<String>>(8)?;
+      let played_at = r.get::<_, Option<String>>(9)?;
+      let sort_order = r.get::<_, Option<i64>>(10)?;
+      let created_at = r.get::<_, Option<String>>(11)?;
+
+      let our_main_name = r.get::<_, Option<String>>(12)?;
+      let our_main_code = r.get::<_, Option<String>>(13)?;
+      let our_assist_name = r.get::<_, Option<String>>(14)?;
+      let our_assist_code = r.get::<_, Option<String>>(15)?;
+      let opp_main_name = r.get::<_, Option<String>>(16)?;
+      let opp_main_code = r.get::<_, Option<String>>(17)?;
+      let opp_assist_name = r.get::<_, Option<String>>(18)?;
+      let opp_assist_code = r.get::<_, Option<String>>(19)?;
+
+      Ok(json!({
+        "id": id.to_string(),
+        "match_group_id": match_group_id.to_string(),
+        "our_main_champion_id": our_main_id.to_string(),
+        "our_assist_champion_id": our_assist_id.map(|v| v.to_string()),
+        "result": result,
+        "opponent_name": opponent_name,
+        "opponent_main_champion_id": opp_main_id.map(|v| v.to_string()),
+        "opponent_assist_champion_id": opp_assist_id.map(|v| v.to_string()),
+        "notes": notes,
+        "played_at": played_at,
+        "sort_order": sort_order,
+        "created_at": created_at,
+        "our_main_champion": champion_json(Some(our_main_id), our_main_name, our_main_code),
+        "our_assist_champion": champion_json(our_assist_id, our_assist_name, our_assist_code),
+        "opponent_main_champion": champion_json(opp_main_id, opp_main_name, opp_main_code),
+        "opponent_assist_champion": champion_json(opp_assist_id, opp_assist_name, opp_assist_code),
+      }))
+    })
+    .optional()
+    .map_err(|e| format!("db query error: {}", e))?;
+
+  maybe.ok_or_else(|| format!("match not found: {}", id_num))
 }
