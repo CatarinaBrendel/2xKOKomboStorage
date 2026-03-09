@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { useAppConfirm } from '../AppConfirmProvider'
 import { useAppToast } from '../AppToastProvider'
+import { useSettings } from '../../contexts/SettingsContext'
 
 function emptyRoutine() {
   return {
@@ -49,6 +50,8 @@ export default function TrainingRoutineModal({ open, onClose, onSaved, champions
     const currentMain = String(matchDraft.our_main_champion_id || '')
     return champions.filter((ch) => String(ch.id) !== currentMain)
   }, [champions, matchDraft.our_main_champion_id])
+
+  const { userTag } = useSettings()
 
   // initialize when opened for edit or new
   useEffect(() => {
@@ -314,7 +317,7 @@ return (
                   >
                     <div className="text-sm">
                       <span className="font-semibold">
-                        {championNameById(champions, m.our_main_champion_id)}
+                        {(!m.our_assist_champion_id && m.opponent_name && userTag) ? userTag : championNameById(champions, m.our_main_champion_id)}
                       </span>
                       {m.our_assist_champion_id
                         ? ` + ${championNameById(champions, m.our_assist_champion_id)}`
@@ -502,7 +505,7 @@ return (
                     <div key={m._localId || idx} className="rounded border border-[rgba(255,255,255,0.08)] bg-[rgba(255,255,255,0.02)] p-3 flex items-center justify-between">
                       <div className="text-sm">
                         <div>
-                          <span className="font-semibold">{championNameById(champions, m.our_main_champion_id)}</span>
+                          <span className="font-semibold">{(!m.our_assist_champion_id && m.opponent_name && userTag) ? userTag : championNameById(champions, m.our_main_champion_id)}</span>
                           {m.our_assist_champion_id ? ` + ${championNameById(champions, m.our_assist_champion_id)}` : ''}
                           <span className="text-text-muted"> vs </span>
                           <span className="font-semibold">{m.opponent_name || '—'}</span>

@@ -39,7 +39,7 @@ pub fn run() {
 
       Ok(())
     })
-    .invoke_handler(tauri::generate_handler![db::init_db, db::run_migrations_cmd, db::get_logs_dir, db::save_champion_image, db::add_champion, db::get_champion_by_code, db::update_champion, db::delete_champion, db::delete_champion_by_code, db::list_champions, db::get_image_data, db::set_combos, db::set_champion_notes, db::list_tags, db::list_top_combo_tags, db::create_or_get_tag, db::rename_champion_note, db::duplicate_champion_note, db::delete_champion_note, db::create_tournament, db::list_tournaments, db::update_tournament, db::delete_tournament, db::add_tournament_match, db::update_tournament_match, db::delete_tournament_match, db::list_tournament_matches, db::get_tournament_match, db::list_training_matches, db::backup_db, db::backup_db_to])
+    .invoke_handler(tauri::generate_handler![db::init_db, db::run_migrations_cmd, db::get_logs_dir, db::save_champion_image, db::add_champion, db::get_champion_by_code, db::update_champion, db::delete_champion, db::delete_champion_by_code, db::list_champions, db::get_image_data, db::set_combos, db::set_champion_notes, db::list_tags, db::list_top_combo_tags, db::create_or_get_tag, db::rename_champion_note, db::duplicate_champion_note, db::delete_champion_note, db::create_tournament, db::list_tournaments, db::update_tournament, db::delete_tournament, db::add_tournament_match, db::update_tournament_match, db::delete_tournament_match, db::list_tournament_matches, db::get_tournament_match, db::list_training_matches, db::backup_db, db::backup_db_to, db::restore_db_from, db::restore_db_from_bytes, db::get_settings, db::set_settings, db::relaunch_app])
     .run(tauri::generate_context!())
     .expect("error while running tauri application");
 

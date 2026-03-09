@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { Trash2, Edit2 } from 'lucide-react'
 import getTauriModule from '../../utils/tauri'
+import { useSettings } from '../../contexts/SettingsContext'
 import TournamentWizardModal from './TournamentWizardModal'
 import { useAppToast } from '../AppToastProvider'
 import { useAppConfirm } from '../AppConfirmProvider'
@@ -33,6 +34,9 @@ export default function TournamentArea() {
   const [deletingTournamentId, setDeletingTournamentId] = useState('')
   const { showToast } = useAppToast()
   const { confirm } = useAppConfirm()
+
+  const { userTag } = useSettings()
+  // userTag provided by SettingsProvider via useSettings()
 
   async function loadTournaments() {
     const tauri = await getTauriModule()
@@ -382,14 +386,14 @@ export default function TournamentArea() {
                       <div className="space-y-2">
                         {Array.isArray(selectedTournament.matches) && selectedTournament.matches.length > 0 ? (
                           selectedTournament.matches.map((match, idx) => {
-                            const ourMainName = match && match.our_main_champion && match.our_main_champion.name ? match.our_main_champion.name : '—'
-                            const ourAssistName = match && match.our_assist_champion && match.our_assist_champion.name ? match.our_assist_champion.name : ''
+                              const ourMainName = match && match.our_main_champion && match.our_main_champion.name ? match.our_main_champion.name : '—'
+                              const ourAssistName = match && match.our_assist_champion && match.our_assist_champion.name ? match.our_assist_champion.name : ''
                             const result = String(match && match.result ? match.result : '').toLowerCase()
                             return (
                               <div key={match && match.id ? match.id : idx} className="rounded border border-[rgba(255,255,255,0.05)] px-3 py-2">
                                 <div className="flex items-center justify-between gap-2">
                                   <div className="text-sm">
-                                    <span className="font-semibold">{ourMainName}</span>
+                                    <span className="font-semibold">{(!ourAssistName && match && match.opponent_name && userTag) ? userTag : ourMainName}</span>
                                     {ourAssistName ? ` + ${ourAssistName}` : ''}
                                     <span className="text-text-muted"> vs </span>
                                     <span className="font-semibold">{match && match.opponent_name ? match.opponent_name : 'Unknown opponent'}</span>

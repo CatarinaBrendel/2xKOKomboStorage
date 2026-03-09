@@ -2,6 +2,7 @@ import React, { useMemo, useState, useEffect } from 'react'
 import getTauriModule from '../../utils/tauri'
 import { useAppConfirm } from '../AppConfirmProvider'
 import { Trash2 } from 'lucide-react'
+import { useSettings } from '../../contexts/SettingsContext'
 
 function emptyTournament() {
   return {
@@ -52,12 +53,15 @@ export default function TournamentWizardModal({
   const [showMatchEditor, setShowMatchEditor] = useState(false)
   const [editingMatchIndex, setEditingMatchIndex] = useState(null)
   const { confirm } = useAppConfirm()
+  const { userTag } = useSettings()
   const totalSteps = 3
 
   const availableAssistChampions = useMemo(() => {
     const currentMain = String(matchDraft.our_main_champion_id || '')
     return champions.filter((ch) => String(ch.id) !== currentMain)
   }, [champions, matchDraft.our_main_champion_id])
+
+  // userTag now comes from SettingsProvider via useSettings()
 
   async function handleDeleteMatch(index) {
     try {
@@ -453,7 +457,7 @@ export default function TournamentWizardModal({
                   matches.map((m, idx) => (
                     <div key={`${idx}-${m.our_main_champion_id}-${m.opponent_name}`} className="rounded border border-[rgba(255,255,255,0.08)] bg-[rgba(255,255,255,0.02)] p-3 flex items-center justify-between">
                       <div className="text-sm">
-                        <span className="font-semibold">{championNameById(champions, m.our_main_champion_id)}</span>
+                        <span className="font-semibold">{(!m.our_assist_champion_id && m.opponent_name && userTag) ? userTag : championNameById(champions, m.our_main_champion_id)}</span>
                         {m.our_assist_champion_id ? ` + ${championNameById(champions, m.our_assist_champion_id)}` : ''}
                         <span className="text-text-muted"> vs </span>
                         <span className="font-semibold">{m.opponent_name}</span>

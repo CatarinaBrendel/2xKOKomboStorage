@@ -278,3 +278,143 @@ pub fn backup_db_to(dest: Option<String>) -> Result<String, String> {
 
   Ok(dest_file.to_string_lossy().into_owned())
 }
+
+#[tauri::command]
+pub fn restore_db_from(src: String) -> Result<String, String> {
+  use std::time::{SystemTime, UNIX_EPOCH};
+
+  let src_path = std::path::PathBuf::from(src);
+  if !src_path.exists() || !src_path.is_file() {
+    return Err("source backup file not found".to_string());
+  }
+
+  let dest = common::default_db_path().map_err(|e| format!("{}", e))?;
+
+  // Before replacing, save a snapshot of the current DB to the backups folder.
+  if dest.exists() {
+    let base = dirs_next::document_dir().or_else(|| dirs_next::data_dir()).ok_or("unable to locate documents or data dir")?;
+    let backups = base.join("2xKOKombo Backups");
+    std::fs::create_dir_all(&backups).map_err(|e| format!("{}", e))?;
+    let ts = SystemTime::now().duration_since(UNIX_EPOCH).map_err(|e| format!("{}", e))?.as_secs();
+    let backup_current = backups.join(format!("pre-restore-{}.db", ts));
+    std::fs::copy(&dest, &backup_current).map_err(|e| format!("failed to backup current DB: {}", e))?;
+  }
+
+  if let Some(parent) = dest.parent() {
+    std::fs::create_dir_all(parent).map_err(|e| format!("failed to create parent dir {}: {}", parent.display(), e))?;
+  }
+
+  std::fs::copy(&src_path, &dest).map_err(|e| format!("failed to copy {} -> {}: {}", src_path.display(), dest.display(), e))?;
+
+  // ensure file times are updated
+  let now_ft = filetime::FileTime::from_system_time(SystemTime::now());
+  let _ = filetime::set_file_times(&dest, now_ft, now_ft);
+
+  Ok(dest.to_string_lossy().into_owned())
+}
+
+#[tauri::command]
+pub fn restore_db_from_bytes(bytes: Vec<u8>, filename_hint: Option<String>) -> Result<String, String> {
+  use std::time::{SystemTime, UNIX_EPOCH};
+
+  let dest = common::default_db_path().map_err(|e| format!("{}", e))?;
+
+  // backup current DB if exists
+  if dest.exists() {
+    let base = dirs_next::document_dir().or_else(|| dirs_next::data_dir()).ok_or("unable to locate documents or data dir")?;
+    let backups = base.join("2xKOKombo Backups");
+    std::fs::create_dir_all(&backups).map_err(|e| format!("{}", e))?;
+    let ts = SystemTime::now().duration_since(UNIX_EPOCH).map_err(|e| format!("{}", e))?.as_secs();
+    let backup_current = backups.join(format!("pre-restore-{}.db", ts));
+    std::fs::copy(&dest, &backup_current).map_err(|e| format!("failed to backup current DB: {}", e))?;
+  }
+
+  if let Some(parent) = dest.parent() {
+    std::fs::create_dir_all(parent).map_err(|e| format!("failed to create parent dir {}: {}", parent.display(), e))?;
+  }
+
+  // write bytes to a temporary file in the destination's parent dir then rename into place
+  let ts = SystemTime::now().duration_since(UNIX_EPOCH).map_err(|e| format!("{}", e))?.as_secs();
+  let hint = filename_hint.unwrap_or_else(|| format!("restored-{}", ts));
+  let tmp_name = format!(".tmp-{}-{}", ts, hint.replace('/', "_"));
+  let parent = dest.parent().ok_or_else(|| "destination parent missing".to_string())?;
+  let tmp = parent.join(tmp_name);
+  std::fs::write(&tmp, &bytes).map_err(|e| format!("failed to write temp restore file {}: {}", tmp.display(), e))?;
+
+  std::fs::rename(&tmp, &dest).map_err(|e| format!("failed to move restored file into place: {}", e))?;
+
+  // ensure file times are updated
+  let now_ft = filetime::FileTime::from_system_time(SystemTime::now());
+  let _ = filetime::set_file_times(&dest, now_ft, now_ft);
+
+  Ok(dest.to_string_lossy().into_owned())
+}
+
+#[tauri::command]
+pub fn relaunch_app() -> Result<String, String> {
+  // Spawn a new instance of the current executable and exit. Avoid relying
+  // on optional `tauri::api` features so this compiles with the crate
+  // configuration used by the project.
+  match std::env::current_exe() {
+    Ok(exe) => {
+      if let Err(e) = std::process::Command::new(exe).spawn() {
+        return Err(format!("failed to spawn new process: {}", e));
+      }
+      std::process::exit(0);
+    }
+    Err(e) => Err(format!("failed to determine current exe: {}", e)),
+  }
+}
+
+#[tauri::command]
+pub fn get_settings() -> Result<serde_json::Value, String> {
+  use rusqlite::OptionalExtension;
+  use rusqlite::Connection;
+
+  let db_path = common::default_db_path().map_err(|e| format!("{}", e))?;
+  let conn = Connection::open(&db_path).map_err(|e| format!("db open error: {}", e))?;
+
+  // Ensure table exists (migrations may handle this, but be resilient)
+  conn.execute_batch("CREATE TABLE IF NOT EXISTS settings (id INTEGER PRIMARY KEY CHECK (id = 1), user_tag TEXT DEFAULT NULL, backups_folder TEXT DEFAULT NULL, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP);")
+    .map_err(|e| format!("failed to ensure settings table: {}", e))?;
+
+  // Ensure a single row exists
+  conn.execute("INSERT OR IGNORE INTO settings (id) VALUES (1)", [])
+    .map_err(|e| format!("failed to ensure settings row: {}", e))?;
+
+  let mut stmt = conn.prepare("SELECT user_tag, backups_folder, updated_at FROM settings WHERE id = 1")
+    .map_err(|e| format!("db prepare error: {}", e))?;
+
+  let row = stmt.query_row([], |r| Ok((r.get::<_, Option<String>>(0)?, r.get::<_, Option<String>>(1)?, r.get::<_, Option<String>>(2)?))).optional().map_err(|e| format!("db query error: {}", e))?;
+
+  if let Some((tag, folder, updated)) = row {
+    Ok(serde_json::json!({"user_tag": tag, "backups_folder": folder, "updated_at": updated}))
+  } else {
+    // should not happen because of INSERT OR IGNORE, but return defaults
+    Ok(serde_json::json!({"user_tag": serde_json::Value::Null, "backups_folder": serde_json::Value::Null, "updated_at": serde_json::Value::Null}))
+  }
+}
+
+#[tauri::command]
+pub fn set_settings(user_tag: Option<String>, backups_folder: Option<String>) -> Result<String, String> {
+  use rusqlite::Connection;
+
+  let db_path = common::default_db_path().map_err(|e| format!("{}", e))?;
+  let conn = Connection::open(&db_path).map_err(|e| format!("db open error: {}", e))?;
+
+  conn.execute_batch("CREATE TABLE IF NOT EXISTS settings (id INTEGER PRIMARY KEY CHECK (id = 1), user_tag TEXT DEFAULT NULL, backups_folder TEXT DEFAULT NULL, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP);")
+    .map_err(|e| format!("failed to ensure settings table: {}", e))?;
+
+  conn.execute("INSERT OR IGNORE INTO settings (id) VALUES (1)", [])
+    .map_err(|e| format!("failed to ensure settings row: {}", e))?;
+  
+
+  // Use COALESCE so passing NULL preserves existing values
+  conn.execute(
+    "UPDATE settings SET user_tag = COALESCE(?1, user_tag), backups_folder = COALESCE(?2, backups_folder), updated_at = CURRENT_TIMESTAMP WHERE id = 1",
+    rusqlite::params![user_tag, backups_folder],
+  )
+  .map_err(|e| format!("failed to update settings: {}", e))?;
+
+  Ok("ok".to_string())
+}
