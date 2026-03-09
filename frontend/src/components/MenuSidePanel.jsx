@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react'
-import { Plus } from 'lucide-react'
+import { Plus, Settings } from 'lucide-react'
 import logoUrl from '../assets/logo_nobg.png'
 import getTauriModule from '../utils/tauri'
 import AddChampionModal from './AddChampionModal'
+import BackupDbModal from './BackupDbModal'
 import { useAppToast } from './AppToastProvider'
 
  
@@ -22,6 +23,7 @@ export default function MenuSidePanel({ selection: propSelection, onSelectionCha
   const setShowAddModalState = setShowAddModal || setInnerShowAddModal
   const newChampionState = typeof newChampion !== 'undefined' ? newChampion : innerNewChampion
   const setNewChampionState = setNewChampion || setInnerNewChampion
+  const [showBackupModal, setShowBackupModal] = useState(false)
 
   async function handleWizardFinish(finalData) {
     console.log('handleWizardFinish', finalData)
@@ -428,6 +430,7 @@ export default function MenuSidePanel({ selection: propSelection, onSelectionCha
         <div className="mb-1 flex justify-center">
           <img src={logoUrl} alt="logo" className="w-48 h-auto object-contain" />
         </div>
+        
         <div className="mb-2">
           <button
             type="button"
@@ -528,6 +531,19 @@ export default function MenuSidePanel({ selection: propSelection, onSelectionCha
         )}
         </div>
       </div>
+      <div className="mt-auto py-3 border-t border-[rgba(255,255,255,0.02)] flex items-center justify-center">
+        <button
+          type="button"
+          onClick={() => setShowBackupModal(true)}
+          className="flex items-center gap-2 px-3 py-1 rounded hover:bg-[rgba(255,255,255,0.02)]"
+          title="Settings"
+        >
+          <Settings size={16} className="text-[var(--color-text-muted)]" />
+          Settings
+        </button>
+      </div>
+      <BackupDbModal show={showBackupModal} onClose={() => setShowBackupModal(false)} />
+
       <AddChampionModal
         show={showAddModalState}
         onClose={() => setShowAddModalState(false)}
